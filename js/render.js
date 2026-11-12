@@ -5,15 +5,8 @@
   const FONT_BODY = '"Overpass", "Segoe UI", Arial, sans-serif';
   const INK = '#1f1d22';
 
-  // Área da arte de cada tipo (usada também para a proporção do recorte)
-  const ART = {
-    domain: { x: 0, y: 0, w: W, h: 560 },
-    subclass: { x: 0, y: 0, w: W, h: 560 },
-    class: { x: 0, y: 0, w: W, h: 500 },
-    ancestry: { x: 0, y: 0, w: W, h: 640 },
-    community: { x: 0, y: 0, w: W, h: 690 },
-    back: { x: 0, y: 0, w: W, h: H },
-  };
+  // Área da arte de cada tipo: vem do registro (js/types.js)
+  const artOf = (type) => DH_TYPES.artRect(type);
 
   /* ------------------------------------------------------------------ */
   /* Imagens                                                             */
@@ -363,7 +356,8 @@
 
   function drawBanner(ctx, s, icons) {
     const x = 44, w = 120, notch = 34;
-    const h = icons.length > 1 ? 300 : 270;
+    const kind = DH_TYPES.get(s.type).banner;
+    const h = kind === 2 ? 300 : 270;
     const color = s.color;
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,.35)';
@@ -390,7 +384,7 @@
 
     const fg = luminance(color) > 0.72 ? INK : '#ffffff';
     const cx = x + w / 2;
-    if (s.type === 'domain') {
+    if (kind === 1) {
       ctx.fillStyle = fg;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
@@ -398,7 +392,7 @@
       ctx.font = headFont(lvl.length > 1 ? 62 : 76, 800);
       ctx.fillText(lvl, cx, 112);
       drawContain(ctx, icons[0], cx, 178, 66);
-    } else if (icons.length > 1) {
+    } else if (kind === 2) {
       drawContain(ctx, icons[0], cx, 82, 70);
       drawContain(ctx, icons[1], cx, 182, 70);
     } else {
@@ -467,16 +461,26 @@
     const img = s.art && s.art.src ? getImg(s.art.src) : null;
     ctx.save();
     if (img) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
       drawCropped(ctx, img, s.art.crop, rect.x, rect.y, rect.w, rect.h);
     } else placeholder();
     ctx.restore();
   }
 
-  function placeholderLight(ctx, rect, icon) {
+  // Fundo da frente: branco ou a imagem de fundo escolhida (com véu branco opcional)
+  function drawBase(ctx, s) {
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.fillRect(0, 0, W, H);
+    const img = s.bg && s.bg.src ? getImg(s.bg.src) : null;
+    if (!img) return;
+    drawCropped(ctx, img, s.bg.crop, 0, 0, W, H);
+    const fade = Number(s.bgFade) || 0;
+    if (fade > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${Math.min(0.95, fade)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  function placeholderLight(ctx, rect, icon) {
     if (icon) {
       ctx.globalAlpha = 0.9;
       drawContain(ctx, icon, rect.x + rect.w / 2, rect.y + rect.h / 2 + 10, Math.min(rect.h * 0.55, 300));
@@ -513,15 +517,15 @@
   /* ------------------------------------------------------------------ */
   /* Layouts                                                             */
   /* ------------------------------------------------------------------ */
-  function drawDomainLike(ctx, s) {
+  function drawStandard(ctx, s) {
     const type = s.type;
-    const art = ART[type];
+    const def = DH_TYPES.get(type);
+    const art = artOf(type);
     const bannerFg = luminance(s.color) > 0.72 ? INK : '#ffffff';
     const icons = [domainIcon(s.dom1, bannerFg, s.iconKeepColors)];
-    if (type !== 'domain') icons.push(domainIcon(s.dom2, bannerFg, s.iconKeepColors));
+    if (def.banner === 2) icons.push(domainIcon(s.dom2, bannerFg, s.iconKeepColors));
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, W, H);
+    drawBase(ctx, s);
 
     drawArt(ctx, s, art, () => {
       const ph = domainIcon(s.dom1, '#bdbcc2', false);
@@ -530,8 +534,8 @@
 
     const bandY = art.h;
     drawGoldBand(ctx, bandY, s.gold);
-    drawBanner(ctx, s, icons.filter(Boolean).length ? icons : []);
-    if (type === 'domain') drawRecall(ctx, s);
+    if (def.banner) drawBanner(ctx, s, icons);
+    if (def.features.includes('level')) drawRecall(ctx, s);
     drawLabelPill(ctx, s.label, W / 2, bandY, s.color, s.gold);
 
     // título
@@ -543,31 +547,37 @@
     fitHead(ctx, title, W - 90, 46, 800, 24);
     drawSpaced(ctx, title, W / 2, y, 1, 'center');
 
-    if (s.subtitle && s.subtitle.trim() && type !== 'domain') {
+    if (s.subtitle && s.subtitle.trim() && def.features.includes('subtitle')) {
       y += 38;
       ctx.font = bodyFont(28, false, true);
       ctx.fillStyle = '#4a4650';
       ctx.fillText(s.subtitle, W / 2, y);
     }
 
-    if (type === 'class' && ((s.evasion || '').trim() || (s.hp || '').trim())) {
+    const stats = def.features.includes('stats')
+      ? def.stats(s).map((st) => [st.badge, String(s[st.key] ?? '').trim()]).filter(([, v]) => v)
+      : [];
+    if (stats.length) {
       y += 22;
-      const stats = [];
-      if ((s.evasion || '').trim()) stats.push(['EVASÃO', s.evasion.trim()]);
-      if ((s.hp || '').trim()) stats.push(['PONTOS DE VIDA', s.hp.trim()]);
-      ctx.font = headFont(19, 700);
-      const widths = stats.map(([l, v]) => {
-        ctx.font = headFont(19, 700);
-        const lw = spacedWidth(ctx, l, 1.5);
-        ctx.font = headFont(26, 800);
-        return lw + 14 + ctx.measureText(v).width + 44;
-      });
-      const total = widths.reduce((a, b) => a + b, 0) + (stats.length - 1) * 18;
+      // diminui os selos se os valores forem longos
+      let k = 1;
+      let widths, total;
+      const measure = () => {
+        widths = stats.map(([l, v]) => {
+          ctx.font = headFont(19 * k, 700);
+          const lw = spacedWidth(ctx, l, 1.5 * k);
+          ctx.font = headFont(26 * k, 800);
+          return lw + 14 * k + ctx.measureText(v).width + 44 * k;
+        });
+        total = widths.reduce((a, b) => a + b, 0) + (stats.length - 1) * 18 * k;
+      };
+      measure();
+      while (total > W - 80 && k > 0.55) { k -= 0.05; measure(); }
       let x = W / 2 - total / 2;
       const cy = y + 22;
       stats.forEach(([l, v], i) => {
         const w = widths[i];
-        pillPath(ctx, x + w / 2, cy, w, 42, 12);
+        pillPath(ctx, x + w / 2, cy, w, 42, 12 * k);
         ctx.fillStyle = rgba(s.color, 0.08);
         ctx.fill();
         ctx.strokeStyle = s.gold;
@@ -575,13 +585,13 @@
         ctx.stroke();
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#56515c';
-        ctx.font = headFont(19, 700);
-        const lw = drawSpaced(ctx, l, x + 22, cy + 1, 1.5, 'left');
+        ctx.font = headFont(19 * k, 700);
+        const lw = drawSpaced(ctx, l, x + 22 * k, cy + 1, 1.5 * k, 'left');
         ctx.fillStyle = s.color && luminance(s.color) < 0.6 ? s.color : INK;
-        ctx.font = headFont(26, 800);
+        ctx.font = headFont(26 * k, 800);
         ctx.textAlign = 'left';
-        ctx.fillText(v, x + 22 + lw + 14, cy + 2);
-        x += w + 18;
+        ctx.fillText(v, x + 22 * k + lw + 14 * k, cy + 2);
+        x += w + 18 * k;
       });
       ctx.textBaseline = 'alphabetic';
       y += 44;
@@ -589,16 +599,15 @@
 
     const top = y + 24;
     const box = { x: 48, y: top, w: W - 96, h: H - 72 - top };
-    const lay = fitRich(ctx, bodyParas(s, type === 'class'), box, 28 * (s.textScale || 1));
+    const lay = fitRich(ctx, bodyParas(s, def.features.includes('description')), box, 28 * (s.textScale || 1));
     drawRich(ctx, lay, box.x, box.y);
     drawFooter(ctx, s);
   }
 
   function drawAncestry(ctx, s) {
-    const art = ART.ancestry;
+    const art = artOf(s.type);
     const gold = s.gold;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, W, H);
+    drawBase(ctx, s);
     drawArt(ctx, s, art, () => placeholderScene(ctx, art, '#5b6fa8'));
 
     const P = 585, tabX = W * 0.56, rise = 42;
@@ -612,9 +621,11 @@
     panel(-9);
     ctx.fillStyle = goldGradientH(ctx, gold, 0, W);
     ctx.fill();
+    ctx.save();
     panel(0);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
+    ctx.clip();
+    drawBase(ctx, s);
+    ctx.restore();
     // linhas finas decorativas
     ctx.strokeStyle = rgba(gold, 0.85);
     ctx.lineWidth = 2.5;
@@ -671,11 +682,10 @@
   }
 
   function drawCommunity(ctx, s) {
-    const art = ART.community;
+    const art = artOf(s.type);
     const gold = s.gold;
     const A = art.h, ch = 70;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, W, H);
+    drawBase(ctx, s);
 
     ctx.save();
     ctx.beginPath();
@@ -745,24 +755,80 @@
     ctx.clearRect(0, 0, W, H);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    if (s.type === 'ancestry') drawAncestry(ctx, s);
-    else if (s.type === 'community') drawCommunity(ctx, s);
-    else drawDomainLike(ctx, s);
+    const layout = DH_TYPES.get(s.type).layout;
+    if (layout === 'ancestry') drawAncestry(ctx, s);
+    else if (layout === 'community') drawCommunity(ctx, s);
+    else drawStandard(ctx, s);
   }
 
   function renderBack(canvas, s, back) {
     const ctx = canvas.getContext('2d');
     ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
     ctx.clearRect(0, 0, W, H);
+    const textMode = s.backMode === 'text';
     const img = back && back.src ? getImg(back.src) : null;
     if (img) {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, W, H);
       drawCropped(ctx, img, back.crop, 0, 0, W, H);
-      return;
+    } else drawDefaultBack(ctx, s, !textMode);
+    if (textMode) drawBackText(ctx, s);
+  }
+
+  // Painel de texto do verso (modo "Verso com texto")
+  function drawBackText(ctx, s) {
+    const gold = s.gold;
+    const px = 66, py = 84, pw = W - px * 2, ph = H - py * 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,.35)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 4;
+    roundRect(ctx, px, py, pw, ph, 18);
+    ctx.fillStyle = 'rgba(255,253,248,.95)';
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = gold;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    roundRect(ctx, px + 10, py + 10, pw - 20, ph - 20, 12);
+    ctx.strokeStyle = rgba(gold, 0.6);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    const title = String((s.backTitle && s.backTitle.trim()) || s.title || '').toUpperCase();
+    let top = py + 44;
+    if (title) {
+      ctx.save();
+      ctx.fillStyle = INK;
+      ctx.textBaseline = 'alphabetic';
+      fitHead(ctx, title, pw - 80, 42, 800, 22);
+      drawSpaced(ctx, title, W / 2, py + 86, 1, 'center');
+      // divisória dourada com losango
+      const dy = py + 112;
+      ctx.strokeStyle = gold;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(px + 60, dy); ctx.lineTo(W / 2 - 16, dy);
+      ctx.moveTo(W / 2 + 16, dy); ctx.lineTo(px + pw - 60, dy);
+      ctx.stroke();
+      ctx.fillStyle = gold;
+      ctx.beginPath();
+      ctx.moveTo(W / 2, dy - 9); ctx.lineTo(W / 2 + 9, dy); ctx.lineTo(W / 2, dy + 9); ctx.lineTo(W / 2 - 9, dy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      top = dy + 30;
     }
-    // verso padrão
-    const color = s.type === 'ancestry' ? '#3b4a7a' : s.type === 'community' ? '#2f6b67' : s.color;
+    const box = { x: px + 36, y: top, w: pw - 72, h: py + ph - 40 - top };
+    const lay = fitRich(ctx, parseRich(s.backText, false), box, 28 * (s.textScale || 1));
+    // centraliza verticalmente quando o texto é curto
+    const offset = Math.max(0, (box.h - lay.height) / 2);
+    drawRich(ctx, lay, box.x, box.y + Math.min(offset, 60));
+  }
+
+  function drawDefaultBack(ctx, s, emblem) {
+    const color = s.color;
     const gold = s.gold;
     const g = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, H * 0.7);
     g.addColorStop(0, lighten(color, 0.12));
@@ -792,6 +858,7 @@
     ctx.strokeStyle = rgba(gold, 0.7);
     roundRect(ctx, m + 14, m + 14, W - 2 * m - 28, H - 2 * m - 28, 6);
     ctx.stroke();
+    if (!emblem) { ctx.restore(); return; }
 
     // losango central
     const cx = W / 2, cy = H / 2, r = 150;
@@ -816,8 +883,7 @@
     ctx.stroke();
     ctx.restore();
 
-    let icon = null;
-    if (s.type === 'domain' || s.type === 'class' || s.type === 'subclass') icon = domainIcon(s.dom1, lighten(gold, 0.35), s.iconKeepColors);
+    let icon = domainIcon(s.dom1, lighten(gold, 0.35), s.iconKeepColors);
     if (!icon) icon = getImg(DH_ICONS.svgDataUrl('star', lighten(gold, 0.35)));
     drawContain(ctx, icon, cx, cy, 130);
   }
@@ -828,6 +894,7 @@
     const fg = luminance(s.color || '#000') > 0.72 ? INK : '#ffffff';
     const srcs = [];
     if (s.art && s.art.src) srcs.push(s.art.src);
+    if (s.bg && s.bg.src) srcs.push(s.bg.src);
     if (back && back.src) srcs.push(back.src);
     srcs.push(...domainIconSrcs(s.dom1, [fg, '#bdbcc2', lighten(gold, 0.35)]));
     srcs.push(...domainIconSrcs(s.dom2, [fg]));
@@ -854,7 +921,7 @@
   }
 
   window.DH_RENDER = {
-    W, H, ART,
+    W, H,
     renderFront, renderBack, whenReady, ensureFonts, loadImg, coverCrop,
     setOnImageLoad(fn) { onImageLoad = fn; },
   };

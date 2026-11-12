@@ -23,13 +23,7 @@
 
       <div class="side-section">
         <div class="side-label">Tipo de carta</div>
-        <nav class="type-list" id="typeList">
-          <button data-type="class"><span class="ti">⚔</span>Classe</button>
-          <button data-type="subclass"><span class="ti">🛡</span>Subclasse</button>
-          <button data-type="ancestry"><span class="ti">🧬</span>Ancestralidade</button>
-          <button data-type="community"><span class="ti">🏘</span>Comunidade</button>
-          <button data-type="domain"><span class="ti">✦</span>Carta de Domínio</button>
-        </nav>
+        <nav class="type-list" id="typeList"><!-- gerado a partir de js/types.js --></nav>
       </div>
 
       <div class="side-section">
@@ -41,6 +35,11 @@
         </label>
         <div id="backControls" class="back-controls hidden">
           <p class="hint">O verso aparece ao lado da frente. Na folha A4 os dois ficam colados para dobrar e formar frente e verso.</p>
+          <div class="view-switch" id="backModeSwitch">
+            <button data-mode="image" class="active" title="Só a imagem ou o desenho padrão">Só fundo</button>
+            <button data-mode="text" title="Fundo com um painel de texto por cima">Verso com texto</button>
+          </div>
+          <p class="hint small" id="backModeHint">No modo “Verso com texto”, o título e o texto do verso ficam no painel da direita.</p>
           <button class="btn btn-sm" id="backUploadBtn">Enviar imagem do verso</button>
           <div class="row-btns">
             <button class="btn btn-sm btn-ghost" id="backCropBtn" disabled>Ajustar recorte</button>
@@ -52,7 +51,7 @@
 
       <div class="side-section">
         <div class="side-label">Visualização</div>
-        <div class="view-switch">
+        <div class="view-switch" id="viewSwitch">
           <button data-view="editor" class="active">Editor</button>
           <button data-view="sheet">Folha A4 <span class="badge" id="sheetCount">0</span></button>
         </div>
@@ -128,6 +127,23 @@
           <p class="hint">Você também pode arrastar uma imagem para cima da carta.</p>
         </details>
 
+        <details open class="group hidden" id="bgGroup">
+          <summary>Imagem de fundo da carta</summary>
+          <div class="img-row">
+            <div class="img-thumb" id="bgThumb"><span>Fundo branco</span></div>
+            <div class="img-actions">
+              <button class="btn btn-sm" id="bgUploadBtn">Enviar fundo</button>
+              <button class="btn btn-sm btn-ghost" id="bgCropBtn" disabled>Ajustar recorte</button>
+              <button class="btn btn-sm btn-ghost" id="bgRemoveBtn" disabled>Remover</button>
+            </div>
+          </div>
+          <input type="file" id="bgFile" accept="image/*" hidden>
+          <label class="field" id="bgFadeField">Clarear o fundo <output id="o_bgFade">0%</output>
+            <input type="range" id="f_bgFade" min="0" max="90" step="5">
+          </label>
+          <p class="hint">Fica atrás do texto e das molduras, na frente da carta. Sem imagem, a carta continua com o fundo branco. Se o texto ficar difícil de ler, clareie o fundo.</p>
+        </details>
+
         <details open class="group">
           <summary>Textos</summary>
           <label class="field">Título
@@ -137,11 +153,14 @@
             <input type="text" id="f_label" list="labelList">
             <datalist id="labelList"></datalist>
           </label>
-          <label class="field" data-show="subclass class">Subtítulo
+          <label class="field" data-feat="itemKind">Tipo de item
+            <select id="f_itemKind"></select>
+          </label>
+          <label class="field" data-feat="subtitle">Subtítulo
             <input type="text" id="f_subtitle" list="subtitleList">
             <datalist id="subtitleList"></datalist>
           </label>
-          <div class="field-row" data-show="domain">
+          <div class="field-row" data-feat="level">
             <label class="field">Nível
               <input type="number" id="f_level" min="0" max="99">
             </label>
@@ -149,19 +168,19 @@
               <input type="text" id="f_recall" maxlength="3">
             </label>
           </div>
-          <div class="field-row" data-show="class">
-            <label class="field">Evasão inicial
-              <input type="text" id="f_evasion" maxlength="3">
+          <div class="field-row" data-feat="stats" id="statsRow">
+            <label class="field"><span id="l_stat1">Valor 1</span>
+              <input type="text" id="f_stat1" maxlength="24">
             </label>
-            <label class="field">Pontos de Vida
-              <input type="text" id="f_hp" maxlength="3">
+            <label class="field"><span id="l_stat2">Valor 2</span>
+              <input type="text" id="f_stat2" maxlength="24">
             </label>
           </div>
-          <label class="field" data-show="ancestry community class">Descrição <small>(itálico)</small>
+          <label class="field" data-feat="description">Descrição <small>(itálico)</small>
             <textarea id="f_description" rows="3"></textarea>
           </label>
           <label class="field">Texto da habilidade
-            <div class="fmt-bar">
+            <div class="fmt-bar" data-target="f_text">
               <button type="button" data-fmt="**" title="Negrito"><b>N</b></button>
               <button type="button" data-fmt="*" title="Itálico"><i>I</i></button>
               <button type="button" data-fmt="***" title="Nome de habilidade (negrito + itálico)"><b><i>Nome:</i></b></button>
@@ -175,25 +194,25 @@
           <p class="hint small">O texto diminui sozinho se não couber na carta.</p>
         </details>
 
-        <details open class="group" data-show="domain class subclass">
-          <summary id="domainSummary">Domínio</summary>
+        <details open class="group" id="themeGroup">
+          <summary id="themeSummary">Cor e ícone</summary>
           <div class="field-row">
-            <label class="field">Cor <span data-show="class subclass">do estandarte</span>
+            <label class="field"><span id="themeColorLabel">Cor do tema</span>
               <input type="color" id="f_color">
             </label>
-            <label class="field"><span data-show="domain">Domínio</span><span data-show="class subclass">Domínio 1</span>
+            <label class="field"><span id="themeDom1Label">Ícone</span>
               <select id="f_dom1Preset"></select>
             </label>
           </div>
           <div class="icon-row">
             <div class="icon-thumb" id="dom1Thumb"></div>
             <div class="img-actions">
-              <button class="btn btn-sm" id="dom1UploadBtn">Enviar ícone <span data-show="class subclass">1</span></button>
+              <button class="btn btn-sm" id="dom1UploadBtn">Enviar ícone<span data-feat="dom2"> 1</span></button>
               <button class="btn btn-sm btn-ghost" id="dom1ResetBtn">Ícone padrão</button>
             </div>
             <input type="file" id="dom1File" accept="image/*" hidden>
           </div>
-          <div class="dom-block" data-show="class subclass">
+          <div class="dom-block" data-feat="dom2">
             <label class="field">Domínio 2
               <select id="f_dom2Preset"></select>
             </label>
@@ -207,7 +226,23 @@
             </div>
           </div>
           <label class="check-field"><input type="checkbox" id="f_iconKeepColors"> Manter as cores originais dos ícones enviados</label>
-          <p class="hint small">Ícones enviados são pintados de branco sobre o estandarte — use PNG com fundo transparente.</p>
+          <p class="hint small" id="themeHint"></p>
+        </details>
+
+        <details open class="group hidden" id="backTextGroup">
+          <summary>Texto do verso</summary>
+          <label class="field">Título do verso
+            <input type="text" id="f_backTitle" placeholder="Vazio = usa o título da frente">
+          </label>
+          <label class="field">Texto do verso
+            <div class="fmt-bar" data-target="f_backText">
+              <button type="button" data-fmt="**" title="Negrito"><b>N</b></button>
+              <button type="button" data-fmt="*" title="Itálico"><i>I</i></button>
+              <button type="button" data-fmt="***" title="Nome de habilidade (negrito + itálico)"><b><i>Nome:</i></b></button>
+            </div>
+            <textarea id="f_backText" rows="7"></textarea>
+          </label>
+          <p class="hint small">A imagem do verso (ou o desenho padrão) fica atrás deste painel.</p>
         </details>
 
         <details class="group">
@@ -264,6 +299,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="js/icons.js"></script>
+  <script src="js/types.js"></script>
   <script src="js/render.js"></script>
   <script src="js/cropper.js"></script>
   <script src="js/sheet.js"></script>

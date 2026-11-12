@@ -2,65 +2,15 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const R = window.DH_RENDER;
-  const TYPES = ['class', 'subclass', 'ancestry', 'community', 'domain'];
-  const TYPE_NAMES = {
-    class: 'Classe', subclass: 'Subclasse', ancestry: 'Ancestralidade',
-    community: 'Comunidade', domain: 'Carta de Domínio',
-  };
+  const T = window.DH_TYPES;
+  const TYPES = T.ORDER;
+  const typeName = (t) => T.get(t).name;
+  const defaults = (t) => T.defaults(t);
 
-  /* ------------------------------------------------------------------ */
-  /* Valores de exemplo                                                  */
-  /* ------------------------------------------------------------------ */
-  function defaults(type) {
-    const base = {
-      type, title: '', label: '', subtitle: '', level: 1, recall: '', description: '', text: '',
-      evasion: '', hp: '', color: '#4e345b', gold: '#e7b93c',
-      dom1: { preset: 'arcana', icon: null }, dom2: { preset: 'blade', icon: null },
-      iconKeepColors: false, textScale: 1, artist: '', footer: 'Homebrew', art: null,
-    };
-    const ex = {
-      domain: {
-        title: 'Eco Arcano', label: 'Magia', level: 4, recall: '1', color: '#4e345b',
-        dom1: { preset: 'arcana', icon: null },
-        text: 'Quando um aliado a até Perto conjurar uma magia, você pode **gastar 2 Esperança** para repetir o efeito dela contra um alvo diferente.\nUse esta carta uma vez por descanso longo.',
-      },
-      subclass: {
-        title: 'Sentinela de Aço', label: 'Guardião', subtitle: 'Fundamental', color: '#c8401b',
-        dom1: { preset: 'valor', icon: null }, dom2: { preset: 'blade', icon: null },
-        text: '***Muralha Viva:*** Quando um aliado a até Muito Perto sofrer dano, você pode **marcar 1 Estresse** para receber o dano no lugar dele.\n***Postura Firme:*** Enquanto estiver empunhando um escudo, você não pode ser derrubado nem empurrado.',
-      },
-      class: {
-        title: 'Andarilho', label: 'Classe', subtitle: 'Domínios: Sábio e Meia-noite', color: '#2f5d46',
-        evasion: '10', hp: '6',
-        dom1: { preset: 'sage', icon: null }, dom2: { preset: 'midnight', icon: null },
-        description: 'Viajantes incansáveis que conhecem cada trilha esquecida e cada abrigo escondido.',
-        text: '***Recurso de Esperança — Passo Certeiro:*** **Gaste 3 Esperança** para se mover até um ponto Distante sem fazer testes, ignorando terreno difícil.\n***Rastreador:*** Você tem vantagem em testes para seguir pegadas ou encontrar caminhos.',
-      },
-      ancestry: {
-        title: 'Mariposa', label: 'Ancestralidade',
-        description: 'Mariposas são um povo noturno de asas felpudas, atraído por luzes e segredos.',
-        text: '***Asas Silenciosas:*** Você pode voar. Enquanto voa no escuro, tem vantagem em testes para se esconder.\n***Olhos Noturnos:*** Você enxerga na penumbra como se fosse dia claro.',
-      },
-      community: {
-        title: 'Porto-Névoa', label: 'Comunidade',
-        description: 'Ser de Porto-Névoa significa crescer entre docas encharcadas, sinos de nevoeiro e contrabandistas gentis.',
-        text: '***Conhecer as Marés:*** Ao negociar com marinheiros, mercadores ou contrabandistas, você pode **gastar 1 Esperança** para descobrir um boato útil sobre a região.',
-      },
-    };
-    return { ...base, ...ex[type] };
-  }
-
-  const LABEL_SUGGESTIONS = {
-    domain: ['Magia', 'Habilidade', 'Grimório'],
-    subclass: ['Bardo', 'Druida', 'Guardião', 'Patrulheiro', 'Ladino', 'Serafim', 'Feiticeiro', 'Guerreiro', 'Mago'],
-    class: ['Classe'],
-    ancestry: ['Ancestralidade'],
-    community: ['Comunidade'],
-  };
-  const SUBTITLE_SUGGESTIONS = {
-    subclass: ['Fundamental', 'Especialização', 'Maestria'],
-    class: [],
-  };
+  // Menu lateral gerado a partir do registro de tipos
+  $('typeList').innerHTML = TYPES.map((t) =>
+    `<button data-type="${t}"><span class="ti">${T.get(t).icon}</span>${T.get(t).name}</button>`).join('');
+  $('f_itemKind').innerHTML = T.ITEM_KINDS.map((k) => `<option value="${k.id}">${k.name}</option>`).join('');
 
   /* ------------------------------------------------------------------ */
   /* Estado                                                              */
@@ -134,14 +84,19 @@
   /* ------------------------------------------------------------------ */
   /* Renderização                                                        */
   /* ------------------------------------------------------------------ */
-  let rafId = 0;
+  // requestAnimationFrame para fluidez; o timer garante a renderização mesmo com a aba em segundo plano
+  let renderPending = false;
   function scheduleRender() {
-    if (rafId) return;
-    rafId = requestAnimationFrame(() => {
-      rafId = 0;
+    if (renderPending) return;
+    renderPending = true;
+    const run = () => {
+      if (!renderPending) return;
+      renderPending = false;
       R.renderFront($('frontCanvas'), cur());
       if (app.back.enabled) R.renderBack($('backCanvas'), cur(), app.back);
-    });
+    };
+    requestAnimationFrame(run);
+    setTimeout(run, 60);
   }
   R.setOnImageLoad(scheduleRender);
 
@@ -162,7 +117,7 @@
   /* ------------------------------------------------------------------ */
   /* Formulário                                                          */
   /* ------------------------------------------------------------------ */
-  const TEXT_FIELDS = ['title', 'label', 'subtitle', 'recall', 'evasion', 'hp', 'description', 'text', 'artist', 'footer', 'color', 'gold'];
+  const TEXT_FIELDS = ['title', 'label', 'subtitle', 'recall', 'description', 'text', 'artist', 'footer', 'color', 'gold', 'backTitle', 'backText'];
 
   function fillDomainSelect(sel) {
     sel.innerHTML = DH_ICONS.DOMAINS.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
@@ -195,17 +150,28 @@
     $('backCropBtn').disabled = !app.back.src;
     $('backRemoveBtn').disabled = !app.back.src;
     $('backUploadBtn').textContent = app.back.src ? 'Trocar imagem do verso' : 'Enviar imagem do verso';
+    const mode = cur().backMode === 'text' ? 'text' : 'image';
+    document.querySelectorAll('#backModeSwitch button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+    $('backModeHint').classList.toggle('hidden', mode !== 'text');
+    $('backTextGroup').classList.toggle('hidden', !(app.back.enabled && mode === 'text'));
+    $('bgGroup').classList.toggle('hidden', !app.back.enabled);
   }
 
   function fillForm() {
     const s = cur();
     const t = app.current;
-    document.querySelectorAll('[data-show]').forEach((el) => {
-      el.classList.toggle('hidden', !el.dataset.show.split(' ').includes(t));
+    const def = T.get(t);
+    document.querySelectorAll('[data-feat]').forEach((el) => {
+      el.classList.toggle('hidden', !el.dataset.feat.split(' ').some((f) => def.features.includes(f)));
     });
     document.querySelectorAll('#typeList button').forEach((b) => b.classList.toggle('active', b.dataset.type === t));
-    $('editorTitle').textContent = 'Editar ' + TYPE_NAMES[t].toLowerCase();
-    $('domainSummary').textContent = t === 'domain' ? 'Domínio' : 'Estandarte e domínios';
+    $('editorTitle').textContent = 'Editar ' + typeName(t).toLowerCase();
+    $('themeSummary').textContent = def.theme.title;
+    $('themeColorLabel').textContent = def.theme.color;
+    $('themeDom1Label').textContent = def.theme.dom1;
+    $('themeHint').textContent = def.theme.hint;
+    $('f_itemKind').value = s.itemKind || 'weapon';
+    updateStatsUI();
 
     for (const k of TEXT_FIELDS) $('f_' + k).value = s[k] ?? '';
     $('f_level').value = s.level ?? '';
@@ -214,15 +180,36 @@
     $('f_dom1Preset').value = s.dom1.preset;
     $('f_dom2Preset').value = s.dom2.preset;
     $('f_iconKeepColors').checked = !!s.iconKeepColors;
+    $('f_bgFade').value = Math.round((Number(s.bgFade) || 0) * 100);
+    $('o_bgFade').textContent = Math.round((Number(s.bgFade) || 0) * 100) + '%';
 
-    $('labelList').innerHTML = (LABEL_SUGGESTIONS[t] || []).map((v) => `<option value="${escapeHtml(v)}">`).join('');
-    $('subtitleList').innerHTML = (SUBTITLE_SUGGESTIONS[t] || []).map((v) => `<option value="${escapeHtml(v)}">`).join('');
+    $('labelList').innerHTML = def.labels.map((v) => `<option value="${escapeHtml(v)}">`).join('');
+    $('subtitleList').innerHTML = def.subtitles.map((v) => `<option value="${escapeHtml(v)}">`).join('');
 
     updateIconThumb($('dom1Thumb'), s.dom1, s);
     updateIconThumb($('dom2Thumb'), s.dom2, s);
     updateArtUI();
+    updateBgUI();
     updateBackUI();
     updateEditingUI();
+  }
+
+  // Os dois campos de destaque mudam de rótulo (e de dado salvo) conforme o tipo
+  function currentStats() {
+    const s = cur();
+    return T.has(s.type, 'stats') ? T.get(s.type).stats(s) : [];
+  }
+  function updateStatsUI() {
+    const stats = currentStats();
+    const s = cur();
+    $('statsRow').classList.toggle('hidden', !stats.length);
+    [1, 2].forEach((n) => {
+      const st = stats[n - 1];
+      $('f_stat' + n).closest('.field').classList.toggle('hidden', !st);
+      if (!st) return;
+      $('l_stat' + n).textContent = st.label;
+      $('f_stat' + n).value = s[st.key] ?? '';
+    });
   }
 
   function changed() {
@@ -240,6 +227,23 @@
       changed();
     });
   }
+  [1, 2].forEach((n) => {
+    $('f_stat' + n).addEventListener('input', (e) => {
+      const st = currentStats()[n - 1];
+      if (!st) return;
+      cur()[st.key] = e.target.value;
+      changed();
+    });
+  });
+  $('f_itemKind').addEventListener('change', (e) => {
+    const s = cur();
+    s.itemKind = e.target.value;
+    // troca o ícone padrão junto, se a pessoa não enviou um ícone próprio
+    const kind = T.ITEM_KINDS.find((k) => k.id === s.itemKind);
+    if (kind && !s.dom1.icon) s.dom1.preset = kind.icon;
+    fillForm();
+    changed();
+  });
   $('f_level').addEventListener('input', (e) => { cur().level = e.target.value; changed(); });
   $('f_textScale').addEventListener('input', (e) => {
     cur().textScale = Number(e.target.value) / 100;
@@ -251,7 +255,7 @@
   $('f_dom1Preset').addEventListener('change', (e) => {
     const s = cur();
     s.dom1 = { preset: e.target.value, icon: null };
-    if (s.type === 'domain') {
+    if (T.get(s.type).presetSetsColor) {
       s.color = DH_ICONS.domainById(e.target.value).color;
       $('f_color').value = s.color;
     }
@@ -289,7 +293,8 @@
   // Barra de formatação do texto
   document.querySelectorAll('.fmt-bar button').forEach((b) => {
     b.addEventListener('click', () => {
-      const ta = $('f_text');
+      const field = b.closest('.fmt-bar').dataset.target || 'f_text';
+      const ta = $(field);
       const m = b.dataset.fmt;
       const { selectionStart: a, selectionEnd: z, value } = ta;
       let sel = value.slice(a, z);
@@ -299,7 +304,7 @@
       ta.focus();
       if (sel) ta.setSelectionRange(a + m.length, a + m.length + sel.length);
       else ta.setSelectionRange(a + m.length, a + m.length);
-      cur().text = next;
+      cur()[field === 'f_backText' ? 'backText' : 'text'] = next;
       changed();
     });
   });
@@ -325,7 +330,7 @@
   /* Imagem da carta                                                     */
   /* ------------------------------------------------------------------ */
   function artAspect() {
-    const a = R.ART[app.current];
+    const a = T.artRect(app.current);
     return a.w / a.h;
   }
 
@@ -358,6 +363,51 @@
     changed();
   });
 
+  /* ------------------------------------------------------------------ */
+  /* Imagem de fundo da frente                                           */
+  /* ------------------------------------------------------------------ */
+  function updateBgUI() {
+    const s = cur();
+    const has = !!(s.bg && s.bg.src);
+    const th = $('bgThumb');
+    th.classList.toggle('has-img', has);
+    th.style.backgroundImage = has ? `url("${s.bg.src}")` : '';
+    $('bgCropBtn').disabled = !has;
+    $('bgRemoveBtn').disabled = !has;
+    $('bgUploadBtn').textContent = has ? 'Trocar fundo' : 'Enviar fundo';
+    $('bgFadeField').classList.toggle('hidden', !has);
+  }
+  $('bgUploadBtn').addEventListener('click', () => $('bgFile').click());
+  $('bgFile').addEventListener('change', async () => {
+    const f = $('bgFile').files[0];
+    $('bgFile').value = '';
+    if (!f) return;
+    try {
+      const src = await readImageFile(f, 2200, false);
+      const crop = await DH_CROP.open(src, R.W / R.H, null);
+      if (!crop) return;
+      cur().bg = { src, crop };
+      updateBgUI();
+      changed();
+    } catch (err) { toast(err.message); }
+  });
+  $('bgCropBtn').addEventListener('click', async () => {
+    const s = cur();
+    if (!s.bg) return;
+    const crop = await DH_CROP.open(s.bg.src, R.W / R.H, s.bg.crop);
+    if (crop) { s.bg.crop = crop; changed(); }
+  });
+  $('bgRemoveBtn').addEventListener('click', () => {
+    cur().bg = null;
+    updateBgUI();
+    changed();
+  });
+  $('f_bgFade').addEventListener('input', (e) => {
+    cur().bgFade = Number(e.target.value) / 100;
+    $('o_bgFade').textContent = e.target.value + '%';
+    changed();
+  });
+
   // Arrastar e soltar
   const wrap = $('previewWrap');
   ['dragenter', 'dragover'].forEach((ev) => wrap.addEventListener(ev, (e) => {
@@ -386,6 +436,13 @@
     app.back.enabled = e.target.checked;
     updateBackUI();
     changed();
+  });
+  document.querySelectorAll('#backModeSwitch button').forEach((b) => {
+    b.addEventListener('click', () => {
+      cur().backMode = b.dataset.mode;
+      updateBackUI();
+      changed();
+    });
   });
   async function setBackFromFile(f) {
     try {
@@ -473,7 +530,7 @@
       const item = {
         id: newId(),
         type: s.type,
-        title: s.title || TYPE_NAMES[s.type],
+        title: s.title || typeName(s.type),
         front: front.toDataURL('image/jpeg', 0.95),
         back: back ? back.toDataURL('image/jpeg', 0.95) : null,
         state: clone(s),
@@ -555,7 +612,7 @@
           ${it.back ? `<img src="${it.back}" alt="">` : ''}
         </div>
         <div class="name" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</div>
-        <div class="meta">${TYPE_NAMES[it.type]}${it.back ? ' • frente e verso' : ''}</div>
+        <div class="meta">${typeName(it.type)}${it.back ? ' • frente e verso' : ''}</div>
         <label class="qty">Cópias <input type="number" min="1" max="99" value="${parseInt(it.qty, 10) || 1}"></label>
         <div class="acts">
           <button data-a="edit">Editar</button>
@@ -618,12 +675,12 @@
 
   function setView(v) {
     app.view = v;
-    document.querySelectorAll('.view-switch button').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
+    document.querySelectorAll('#viewSwitch button').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
     $('editorView').classList.toggle('hidden', v !== 'editor');
     $('sheetView').classList.toggle('hidden', v !== 'sheet');
     if (v === 'sheet') refreshSheet();
   }
-  document.querySelectorAll('.view-switch button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+  document.querySelectorAll('#viewSwitch button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
 
   /* ------------------------------------------------------------------ */
   /* Persistência (IndexedDB + arquivo .json)                            */
@@ -657,20 +714,32 @@
 
   function snapshot() {
     return {
-      app: 'daggerheart-card-maker', version: 1,
+      app: 'daggerheart-card-maker', version: 2,
       current: app.current, cards: app.cards, back: app.back, sheet: app.sheet,
     };
   }
   function applySnapshot(p) {
     if (!p || p.app !== 'daggerheart-card-maker') throw new Error('Arquivo de projeto inválido');
     if (TYPES.includes(p.current)) app.current = p.current;
-    for (const t of TYPES) {
-      if (p.cards && p.cards[t]) {
-        const d = defaults(t);
-        app.cards[t] = { ...d, ...p.cards[t], type: t };
-        app.cards[t].dom1 = { ...d.dom1, ...(p.cards[t].dom1 || {}) };
-        app.cards[t].dom2 = { ...d.dom2, ...(p.cards[t].dom2 || {}) };
+    // Até a versão 1, ancestralidade e comunidade não tinham cor própria: o verso usava uma cor fixa.
+    const migrate = (card) => {
+      if ((p.version || 1) < 2 && (card.type === 'ancestry' || card.type === 'community')) {
+        card.color = defaults(card.type).color;
       }
+      return card;
+    };
+    const merge = (t, saved) => {
+      const d = defaults(t);
+      const card = migrate({ ...d, ...saved, type: t });
+      card.dom1 = { ...d.dom1, ...(saved.dom1 || {}) };
+      card.dom2 = { ...d.dom2, ...(saved.dom2 || {}) };
+      return card;
+    };
+    for (const t of TYPES) {
+      if (p.cards && p.cards[t]) app.cards[t] = merge(t, p.cards[t]);
+    }
+    if (p.sheet && Array.isArray(p.sheet.items)) {
+      p.sheet.items.forEach((i) => { if (i && i.state && TYPES.includes(i.type)) i.state = merge(i.type, i.state); });
     }
     if (p.back) app.back = { enabled: !!p.back.enabled, src: p.back.src || null, crop: p.back.crop || null };
     if (p.sheet) {
