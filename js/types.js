@@ -14,10 +14,11 @@
  *   description → descrição em itálico antes do texto
  *   dom2        → segundo domínio/ícone no estandarte
  *   itemKind    → seletor Arma / Armadura / Outro
+ *   multiclass  → caixa "Multiclasse" e uma segunda faixa de classe
  */
 (function () {
   const BASE_STATE = {
-    title: '', label: '', subtitle: '', level: 1, recall: '', description: '', text: '',
+    title: '', label: '', label2: '', multiclass: false, subtitle: '', level: 1, recall: '', description: '', text: '',
     evasion: '', hp: '', itemKind: 'weapon', trait: '', damage: '', armor: '', threshold: '',
     color: '#4e345b', gold: '#e7b93c',
     dom1: { preset: 'arcana', icon: null }, dom2: { preset: 'blade', icon: null },
@@ -152,8 +153,22 @@
     },
   };
 
+  const CLASS_NAMES = ['Bardo', 'Druida', 'Guardião', 'Patrulheiro', 'Ladino', 'Serafim', 'Feiticeiro', 'Guerreiro', 'Mago'];
+  DEFS.ally = {
+    name: 'Aliado', icon: '🤝', art: 500,
+    features: ['subtitle', 'description', 'multiclass'],
+    labels: CLASS_NAMES,
+    example: {
+      title: 'Mestra Corvina', label: 'Guerreiro', label2: 'Ladino', multiclass: false,
+      subtitle: 'Mercenária de Porto-Névoa', color: '#5b3a6e',
+      dom1: { preset: 'blade', icon: null },
+      description: 'Uma espadachim veterana que luta por moedas, mas nunca abandona quem a contratou.',
+      text: '***Guarda-costas:*** Uma vez por cena, quando um aliado a até Perto for atacado, Corvina pode se colocar na frente e receber o ataque.\n***Contatos no Porto:*** Ela sempre conhece alguém que vende o que o grupo precisa.',
+    },
+  };
+
   // Ordem no menu lateral
-  const ORDER = ['class', 'subclass', 'ancestry', 'community', 'domain', 'item'];
+  const ORDER = ['class', 'subclass', 'ancestry', 'community', 'domain', 'item', 'ally'];
 
   const resolved = {};
   for (const id of Object.keys(DEFS)) resolved[id] = { ...DEFAULT_DEF, ...DEFS[id], id };

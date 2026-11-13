@@ -117,7 +117,7 @@
   /* ------------------------------------------------------------------ */
   /* Formulário                                                          */
   /* ------------------------------------------------------------------ */
-  const TEXT_FIELDS = ['title', 'label', 'subtitle', 'recall', 'description', 'text', 'artist', 'footer', 'color', 'gold', 'backTitle', 'backText'];
+  const TEXT_FIELDS = ['title', 'label', 'label2', 'subtitle', 'recall', 'description', 'text', 'artist', 'footer', 'color', 'gold', 'backTitle', 'backText'];
 
   function fillDomainSelect(sel) {
     sel.innerHTML = DH_ICONS.DOMAINS.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
@@ -171,6 +171,8 @@
     $('themeDom1Label').textContent = def.theme.dom1;
     $('themeHint').textContent = def.theme.hint;
     $('f_itemKind').value = s.itemKind || 'weapon';
+    $('f_multiclass').checked = !!s.multiclass;
+    $('label2Field').classList.toggle('hidden', !(def.features.includes('multiclass') && s.multiclass));
     updateStatsUI();
 
     for (const k of TEXT_FIELDS) $('f_' + k).value = s[k] ?? '';
@@ -234,6 +236,11 @@
       cur()[st.key] = e.target.value;
       changed();
     });
+  });
+  $('f_multiclass').addEventListener('change', (e) => {
+    cur().multiclass = e.target.checked;
+    fillForm();
+    changed();
   });
   $('f_itemKind').addEventListener('change', (e) => {
     const s = cur();

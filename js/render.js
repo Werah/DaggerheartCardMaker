@@ -324,11 +324,19 @@
     ctx.restore();
   }
 
-  function drawLabelPill(ctx, text, cx, cy, fill, gold) {
+  // Largura total (com a borda branca) de uma faixa de rótulo
+  function labelPillWidth(ctx, text, size) {
+    const t = (text || '').toUpperCase();
+    if (!t) return 0;
+    ctx.font = headFont(size || 26, 800);
+    return Math.max(150, spacedWidth(ctx, t, 2) + 74) + 10;
+  }
+
+  function drawLabelPill(ctx, text, cx, cy, fill, gold, size) {
     const t = (text || '').toUpperCase();
     if (!t) return;
     ctx.save();
-    ctx.font = headFont(26, 800);
+    ctx.font = headFont(size || 26, 800);
     const tw = spacedWidth(ctx, t, 2);
     const w = Math.max(150, tw + 74), h = 50;
     ctx.shadowColor = 'rgba(0,0,0,.25)';
@@ -536,7 +544,23 @@
     drawGoldBand(ctx, bandY, s.gold);
     if (def.banner) drawBanner(ctx, s, icons);
     if (def.features.includes('level')) drawRecall(ctx, s);
-    drawLabelPill(ctx, s.label, W / 2, bandY, s.color, s.gold);
+    const labels = [s.label];
+    if (def.features.includes('multiclass') && s.multiclass && (s.label2 || '').trim()) labels.push(s.label2);
+    if (labels.length === 1) drawLabelPill(ctx, s.label, W / 2, bandY, s.color, s.gold);
+    else {
+      // duas faixas lado a lado; diminui a fonte se não couberem
+      const gap = 16;
+      let size = 26, w1, w2;
+      do {
+        w1 = labelPillWidth(ctx, labels[0], size);
+        w2 = labelPillWidth(ctx, labels[1], size);
+        if (w1 + w2 + gap <= W - 40) break;
+        size -= 1;
+      } while (size > 16);
+      const left = W / 2 - (w1 + w2 + gap) / 2;
+      drawLabelPill(ctx, labels[0], left + w1 / 2, bandY, s.color, s.gold, size);
+      drawLabelPill(ctx, labels[1], left + w1 + gap + w2 / 2, bandY, s.color, s.gold, size);
+    }
 
     // título
     let y = bandY + 82;
