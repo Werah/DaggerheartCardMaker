@@ -44,11 +44,12 @@
     let c = tintCache.get(key);
     if (c) return c;
     c = document.createElement('canvas');
-    const max = 256;
+    const max = 512;
     const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
     c.width = Math.max(1, Math.round(img.naturalWidth * r));
     c.height = Math.max(1, Math.round(img.naturalHeight * r));
     const x = c.getContext('2d');
+    x.imageSmoothingQuality = 'high';
     x.drawImage(img, 0, 0, c.width, c.height);
     x.globalCompositeOperation = 'source-in';
     x.fillStyle = color;
@@ -776,6 +777,8 @@
   function renderFront(canvas, s) {
     const ctx = canvas.getContext('2d');
     ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, W, H);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
@@ -788,6 +791,8 @@
   function renderBack(canvas, s, back) {
     const ctx = canvas.getContext('2d');
     ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, W, H);
     const textMode = s.backMode === 'text';
     const img = back && back.src ? getImg(back.src) : null;

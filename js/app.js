@@ -74,7 +74,7 @@
           const data = x.getImageData(0, 0, c.width, c.height).data;
           for (let i = 3; i < data.length; i += 4) if (data[i] < 250) { png = true; break; }
         }
-        resolve(png ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.92));
+        resolve(png ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.95));
       };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não foi possível ler a imagem')); };
       img.src = url;
@@ -100,18 +100,46 @@
   }
   R.setOnImageLoad(scheduleRender);
 
-  async function renderOffscreen(s, back) {
+  // Escala usada em PNG, PDF e impressão: 2 = 1500 x 2100 px (600 dpi no tamanho da carta).
+  // A prévia e as miniaturas da folha continuam em 750 x 1050 (300 dpi).
+  const PRINT_SCALE = 2;
+  const PRINT_JPEG_QUALITY = 1;
+
+  async function renderOffscreen(s, back, scale = 1) {
     await R.whenReady(s, back);
     const front = document.createElement('canvas');
-    front.width = R.W; front.height = R.H;
+    front.width = R.W * scale; front.height = R.H * scale;
     R.renderFront(front, s);
     let backC = null;
     if (back) {
       backC = document.createElement('canvas');
-      backC.width = R.W; backC.height = R.H;
+      backC.width = R.W * scale; backC.height = R.H * scale;
       R.renderBack(backC, s, back);
     }
     return { front, back: backC };
+  }
+
+  // Redesenha as cartas da folha em alta resolução a partir dos dados salvos
+  // (as imagens guardadas na folha são só miniaturas para a prévia).
+  async function hiResItems(items) {
+    const out = [];
+    for (const it of items) {
+      if (!it.state) { out.push(it); continue; }
+      const { front, back } = await renderOffscreen(it.state, it.back ? it.backCfg : null, PRINT_SCALE);
+      out.push({
+        ...it,
+        front: front.toDataURL('image/jpeg', PRINT_JPEG_QUALITY),
+        back: back ? back.toDataURL('image/jpeg', PRINT_JPEG_QUALITY) : null,
+      });
+    }
+    return out;
+  }
+
+  async function busy(btn, label, fn) {
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = label;
+    try { await fn(); } finally { btn.disabled = false; btn.textContent = old; }
   }
 
   /* ------------------------------------------------------------------ */
@@ -283,7 +311,7 @@
       file.value = '';
       if (!f) return;
       try {
-        cur()[slot].icon = await readImageFile(f, 256, true);
+        cur()[slot].icon = await readImageFile(f, 512, true);
         fillForm();
         changed();
       } catch (err) { toast(err.message); }
@@ -343,7 +371,7 @@
 
   async function setArtFromFile(f) {
     try {
-      const src = await readImageFile(f, 2400, false);
+      const src = await readImageFile(f, 4000, false);
       const crop = await DH_CROP.open(src, artAspect(), null);
       if (!crop) return;
       cur().art = { src, crop };
@@ -390,7 +418,7 @@
     $('bgFile').value = '';
     if (!f) return;
     try {
-      const src = await readImageFile(f, 2200, false);
+      const src = await readImageFile(f, 4000, false);
       const crop = await DH_CROP.open(src, R.W / R.H, null);
       if (!crop) return;
       cur().bg = { src, crop };
@@ -453,7 +481,7 @@
   });
   async function setBackFromFile(f) {
     try {
-      const src = await readImageFile(f, 2200, false);
+      const src = await readImageFile(f, 4000, false);
       const crop = await DH_CROP.open(src, R.W / R.H, null);
       if (!crop) return;
       app.back.src = src;
@@ -493,14 +521,14 @@
 
   $('pngBtn').addEventListener('click', async () => {
     const s = cur();
-    const { front, back } = await renderOffscreen(s, backCfg());
+    const { front, back } = await renderOffscreen(s, backCfg(), PRINT_SCALE);
     let out = front;
     if (back) {
       out = document.createElement('canvas');
-      out.width = R.W * 2; out.height = R.H;
+      out.width = front.width * 2; out.height = front.height;
       const x = out.getContext('2d');
       x.drawImage(front, 0, 0);
-      x.drawImage(back, R.W, 0);
+      x.drawImage(back, front.width, 0);
     }
     out.toBlob((blob) => {
       const url = URL.createObjectURL(blob);
@@ -512,12 +540,12 @@
   $('pdfBtn').addEventListener('click', async () => {
     if (!window.jspdf) { toast('Biblioteca de PDF não carregou (verifique a internet).'); return; }
     const s = cur();
-    const { front, back } = await renderOffscreen(s, backCfg());
+    const { front, back } = await renderOffscreen(s, backCfg(), PRINT_SCALE);
     const cw = DH_SHEET.CARD_W, chh = DH_SHEET.CARD_H;
     const w = back ? cw * 2 : cw;
     const doc = new window.jspdf.jsPDF({ unit: 'mm', format: [w, chh], orientation: w > chh ? 'landscape' : 'portrait' });
-    doc.addImage(front.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, cw, chh);
-    if (back) doc.addImage(back.toDataURL('image/jpeg', 0.95), 'JPEG', cw, 0, cw, chh);
+    doc.addImage(front.toDataURL('image/jpeg', PRINT_JPEG_QUALITY), 'JPEG', 0, 0, cw, chh);
+    if (back) doc.addImage(back.toDataURL('image/jpeg', PRINT_JPEG_QUALITY), 'JPEG', cw, 0, cw, chh);
     doc.save(slug(s.title) + '.pdf');
   });
 
@@ -673,11 +701,17 @@
   $('sheetPdfBtn').addEventListener('click', () => {
     if (!app.sheet.items.length) { toast('Adicione cartas à folha primeiro.'); return; }
     if (!window.jspdf) { toast('Biblioteca de PDF não carregou (verifique a internet).'); return; }
-    DH_SHEET.exportPdf(app.sheet.items, { gap: app.sheet.gap, cut: app.sheet.cut });
+    busy($('sheetPdfBtn'), 'Gerando…', async () => {
+      const items = await hiResItems(app.sheet.items);
+      DH_SHEET.exportPdf(items, { gap: app.sheet.gap, cut: app.sheet.cut });
+    });
   });
   $('sheetPrintBtn').addEventListener('click', () => {
     if (!app.sheet.items.length) { toast('Adicione cartas à folha primeiro.'); return; }
-    DH_SHEET.print(app.sheet.items, { gap: app.sheet.gap, cut: app.sheet.cut });
+    busy($('sheetPrintBtn'), 'Preparando…', async () => {
+      const items = await hiResItems(app.sheet.items);
+      await DH_SHEET.print(items, { gap: app.sheet.gap, cut: app.sheet.cut });
+    });
   });
 
   function setView(v) {
