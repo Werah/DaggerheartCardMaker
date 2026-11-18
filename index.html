@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&family=Overpass:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600;1,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=6">
+  <link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
   <div class="app">
@@ -90,6 +90,7 @@
             <input type="number" id="sheetGap" min="0" max="6" step="0.5" value="2"> mm
           </label>
           <label class="check"><input type="checkbox" id="sheetCutLines" checked> Linhas de corte</label>
+          <label class="check" title="Marcado: cada frente e cada verso viram cartas soltas, em sequência. Desmarcado: frente e verso ficam colados para dobrar."><input type="checkbox" id="sheetUnlink"> Quebrar vínculo das cartas</label>
           <span class="spacer"></span>
           <button class="btn btn-sm btn-ghost" id="sheetClearBtn">Limpar folha</button>
           <button class="btn btn-sm" id="sheetPrintBtn">Imprimir</button>
@@ -302,11 +303,11 @@
   <div id="printRoot"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="js/icons.js?v=6"></script>
-  <script src="js/types.js?v=6"></script>
-  <script src="js/render.js?v=6"></script>
-  <script src="js/cropper.js?v=6"></script>
-  <script src="js/sheet.js?v=6"></script>
-  <script src="js/app.js?v=6"></script>
+  <script src="js/icons.js?v=8"></script>
+  <script src="js/types.js?v=8"></script>
+  <script src="js/render.js?v=8"></script>
+  <script src="js/cropper.js?v=8"></script>
+  <script src="js/sheet.js?v=8"></script>
+  <script src="js/app.js?v=8"></script>
 </body>
 </html>

@@ -19,7 +19,7 @@
     current: 'domain',
     cards: Object.fromEntries(TYPES.map((t) => [t, defaults(t)])),
     back: { enabled: false, src: null, crop: null },
-    sheet: { items: [], gap: 2, cut: true },
+    sheet: { items: [], gap: 2, cut: true, unlink: false },
     view: 'editor',
     editingId: null,
     stash: null,
@@ -519,9 +519,46 @@
     return app.back.enabled ? { src: app.back.src, crop: app.back.crop } : null;
   }
 
+  // PNG no tamanho de carta de poker: 750 x 1050 px gravados como 300 dpi = 63,5 x 88,9 mm.
+  const PNG_DPI = 300;
+  const crcTable = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes) {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  // Insere o bloco pHYs (resolução física) logo depois do cabeçalho IHDR do PNG,
+  // para que programas de edição/impressão abram a imagem no tamanho real da carta.
+  async function pngWithDpi(blob, dpi) {
+    const src = new Uint8Array(await blob.arrayBuffer());
+    const ihdrEnd = 8 + 4 + 4 + 13 + 4; // assinatura + IHDR completo
+    const ppm = Math.round(dpi / 0.0254);
+    const chunk = new Uint8Array(4 + 4 + 9 + 4);
+    const dv = new DataView(chunk.buffer);
+    dv.setUint32(0, 9);
+    chunk.set([0x70, 0x48, 0x59, 0x73], 4); // "pHYs"
+    dv.setUint32(8, ppm);
+    dv.setUint32(12, ppm);
+    chunk[16] = 1; // unidade: metro
+    dv.setUint32(17, crc32(chunk.subarray(4, 17)));
+    const out = new Uint8Array(src.length + chunk.length);
+    out.set(src.subarray(0, ihdrEnd), 0);
+    out.set(chunk, ihdrEnd);
+    out.set(src.subarray(ihdrEnd), ihdrEnd + chunk.length);
+    return new Blob([out], { type: 'image/png' });
+  }
+
   $('pngBtn').addEventListener('click', async () => {
     const s = cur();
-    const { front, back } = await renderOffscreen(s, backCfg(), PRINT_SCALE);
+    const { front, back } = await renderOffscreen(s, backCfg(), 1);
     let out = front;
     if (back) {
       out = document.createElement('canvas');
@@ -530,11 +567,11 @@
       x.drawImage(front, 0, 0);
       x.drawImage(back, front.width, 0);
     }
-    out.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      download(url, slug(s.title) + (back ? '-frente-verso' : '') + '.png');
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    }, 'image/png');
+    const raw = await new Promise((resolve) => out.toBlob(resolve, 'image/png'));
+    const blob = await pngWithDpi(raw, PNG_DPI);
+    const url = URL.createObjectURL(blob);
+    download(url, slug(s.title) + (back ? '-frente-verso' : '') + '.png');
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   });
 
   $('pdfBtn').addEventListener('click', async () => {
@@ -632,9 +669,10 @@
     $('sheetCount').textContent = items.reduce((n, i) => n + (parseInt(i.qty, 10) || 1), 0);
     $('sheetGap').value = app.sheet.gap;
     $('sheetCutLines').checked = app.sheet.cut;
+    $('sheetUnlink').checked = !!app.sheet.unlink;
     $('sheetEmpty').classList.toggle('hidden', items.length > 0);
     if (app.view !== 'sheet') return;
-    DH_SHEET.renderPages($('sheetPages'), items, { gap: app.sheet.gap, cut: app.sheet.cut });
+    DH_SHEET.renderPages($('sheetPages'), items, sheetOpts());
 
     const list = $('sheetList');
     list.innerHTML = '';
@@ -689,6 +727,14 @@
     refreshSheet();
     scheduleSave();
   });
+  $('sheetUnlink').addEventListener('change', (e) => {
+    app.sheet.unlink = e.target.checked;
+    refreshSheet();
+    scheduleSave();
+  });
+  function sheetOpts() {
+    return { gap: app.sheet.gap, cut: app.sheet.cut, unlink: !!app.sheet.unlink };
+  }
   $('sheetClearBtn').addEventListener('click', () => {
     if (!app.sheet.items.length) return;
     if (!confirm('Remover todas as cartas da folha A4?')) return;
@@ -703,14 +749,14 @@
     if (!window.jspdf) { toast('Biblioteca de PDF não carregou (verifique a internet).'); return; }
     busy($('sheetPdfBtn'), 'Gerando…', async () => {
       const items = await hiResItems(app.sheet.items);
-      DH_SHEET.exportPdf(items, { gap: app.sheet.gap, cut: app.sheet.cut });
+      await DH_SHEET.exportPdf(items, sheetOpts());
     });
   });
   $('sheetPrintBtn').addEventListener('click', () => {
     if (!app.sheet.items.length) { toast('Adicione cartas à folha primeiro.'); return; }
     busy($('sheetPrintBtn'), 'Preparando…', async () => {
       const items = await hiResItems(app.sheet.items);
-      await DH_SHEET.print(items, { gap: app.sheet.gap, cut: app.sheet.cut });
+      await DH_SHEET.print(items, sheetOpts());
     });
   });
 
@@ -788,6 +834,7 @@
         items: Array.isArray(p.sheet.items) ? p.sheet.items.filter((i) => i && i.front && TYPES.includes(i.type)) : [],
         gap: typeof p.sheet.gap === 'number' ? p.sheet.gap : 2,
         cut: p.sheet.cut !== false,
+        unlink: !!p.sheet.unlink,
       };
     }
     app.editingId = null;
