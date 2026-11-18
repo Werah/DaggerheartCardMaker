@@ -135,6 +135,24 @@
     return out;
   }
 
+  // Versão vetorial (texto e formas nítidos na impressora). Se as bibliotecas de vetor
+  // não carregarem (sem internet, por exemplo), usa as imagens em alta resolução.
+  async function printItems(items) {
+    if (!window.DH_VECTOR || !DH_VECTOR.available()) return hiResItems(items);
+    const out = [];
+    for (const it of items) {
+      if (!it.state) { out.push(it); continue; }
+      const back = it.back ? (it.backCfg || {}) : null;
+      await R.whenReady(it.state, back);
+      out.push({
+        ...it,
+        frontSvg: DH_VECTOR.cardSvg(it.state, null, 'front'),
+        backSvg: back ? DH_VECTOR.cardSvg(it.state, back, 'back') : null,
+      });
+    }
+    return out;
+  }
+
   async function busy(btn, label, fn) {
     const old = btn.textContent;
     btn.disabled = true;
@@ -577,13 +595,23 @@
   $('pdfBtn').addEventListener('click', async () => {
     if (!window.jspdf) { toast('Biblioteca de PDF não carregou (verifique a internet).'); return; }
     const s = cur();
-    const { front, back } = await renderOffscreen(s, backCfg(), PRINT_SCALE);
+    const bc = backCfg();
     const cw = DH_SHEET.CARD_W, chh = DH_SHEET.CARD_H;
-    const w = back ? cw * 2 : cw;
-    const doc = new window.jspdf.jsPDF({ unit: 'mm', format: [w, chh], orientation: w > chh ? 'landscape' : 'portrait' });
-    doc.addImage(front.toDataURL('image/jpeg', PRINT_JPEG_QUALITY), 'JPEG', 0, 0, cw, chh);
-    if (back) doc.addImage(back.toDataURL('image/jpeg', PRINT_JPEG_QUALITY), 'JPEG', cw, 0, cw, chh);
-    doc.save(slug(s.title) + '.pdf');
+    const w = bc ? cw * 2 : cw;
+    await busy($('pdfBtn'), 'Gerando…', async () => {
+      const doc = new window.jspdf.jsPDF({ unit: 'mm', format: [w, chh], orientation: w > chh ? 'landscape' : 'portrait', compress: true });
+      if (window.DH_VECTOR && DH_VECTOR.available()) {
+        await R.whenReady(s, bc);
+        await DH_VECTOR.preparePdf(doc);
+        await DH_VECTOR.addSvgToPdf(doc, DH_VECTOR.cardSvg(s, null, 'front'), 0, 0, cw, chh);
+        if (bc) await DH_VECTOR.addSvgToPdf(doc, DH_VECTOR.cardSvg(s, bc, 'back'), cw, 0, cw, chh);
+      } else {
+        const { front, back } = await renderOffscreen(s, bc, PRINT_SCALE);
+        doc.addImage(front.toDataURL('image/jpeg', PRINT_JPEG_QUALITY), 'JPEG', 0, 0, cw, chh);
+        if (back) doc.addImage(back.toDataURL('image/jpeg', PRINT_JPEG_QUALITY), 'JPEG', cw, 0, cw, chh);
+      }
+      doc.save(slug(s.title) + '.pdf');
+    });
   });
 
   /* ------------------------------------------------------------------ */
@@ -748,14 +776,14 @@
     if (!app.sheet.items.length) { toast('Adicione cartas à folha primeiro.'); return; }
     if (!window.jspdf) { toast('Biblioteca de PDF não carregou (verifique a internet).'); return; }
     busy($('sheetPdfBtn'), 'Gerando…', async () => {
-      const items = await hiResItems(app.sheet.items);
+      const items = await printItems(app.sheet.items);
       await DH_SHEET.exportPdf(items, sheetOpts());
     });
   });
   $('sheetPrintBtn').addEventListener('click', () => {
     if (!app.sheet.items.length) { toast('Adicione cartas à folha primeiro.'); return; }
     busy($('sheetPrintBtn'), 'Preparando…', async () => {
-      const items = await hiResItems(app.sheet.items);
+      const items = await printItems(app.sheet.items);
       await DH_SHEET.print(items, sheetOpts());
     });
   });

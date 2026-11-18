@@ -35,22 +35,22 @@
       pages.push(p);
       return p;
     };
-    const single = (page, r, c, src, key) => {
+    const single = (page, r, c, src, key, svg) => {
       page.grid[r][c] = true;
-      page.cards.push({ x: colX(c), y: rowY(r), w: CARD_W, h: CARD_H, src, key });
+      page.cards.push({ x: colX(c), y: rowY(r), w: CARD_W, h: CARD_H, src, key, svg });
       page.outlines.push({ x: colX(c), y: rowY(r), w: CARD_W, h: CARD_H, fold: null });
     };
 
     if (opts.unlink) {
       const seq = [];
       units.forEach((it) => {
-        seq.push({ src: it.front, key: it.id + 'f' });
-        if (it.back) seq.push({ src: it.back, key: it.id + 'b' });
+        seq.push({ src: it.front, key: it.id + 'f', svg: it.frontSvg });
+        if (it.back) seq.push({ src: it.back, key: it.id + 'b', svg: it.backSvg });
       });
       seq.forEach((card, i) => {
         const slot = i % (COLS * ROWS);
         const page = slot === 0 ? newPage() : pages[pages.length - 1];
-        single(page, Math.floor(slot / COLS), slot % COLS, card.src, card.key);
+        single(page, Math.floor(slot / COLS), slot % COLS, card.src, card.key, card.svg);
       });
     } else {
       const free = (p, r, c) => r < ROWS && c < COLS && !p.grid[r][c];
@@ -66,7 +66,7 @@
           let s = null;
           for (const p of pages) { s = findIn(p, free); if (s) break; }
           if (!s) s = { p: newPage(), r: 0, c: 0 };
-          single(s.p, s.r, s.c, it.front, it.id + 'f');
+          single(s.p, s.r, s.c, it.front, it.id + 'f', it.frontSvg);
           continue;
         }
         // na mesma página: deitado primeiro, depois em pé; só então abre página nova
@@ -82,15 +82,15 @@
         if (mode === 'h') {
           p.grid[r][c] = p.grid[r][c + 1] = true;
           const x = colX(c) + gap / 2, y = rowY(r);
-          p.cards.push({ x, y, w: CARD_W, h: CARD_H, src: it.front, key: it.id + 'f' });
-          p.cards.push({ x: x + CARD_W, y, w: CARD_W, h: CARD_H, src: it.back, key: it.id + 'b' });
+          p.cards.push({ x, y, w: CARD_W, h: CARD_H, src: it.front, key: it.id + 'f', svg: it.frontSvg });
+          p.cards.push({ x: x + CARD_W, y, w: CARD_W, h: CARD_H, src: it.back, key: it.id + 'b', svg: it.backSvg });
           p.outlines.push({ x, y, w: CARD_W * 2, h: CARD_H,
             fold: { x1: x + CARD_W, y1: y - ext, x2: x + CARD_W, y2: y + CARD_H + ext } });
         } else {
           p.grid[r][c] = p.grid[r + 1][c] = true;
           const x = colX(c), y = rowY(r) + gap / 2;
-          p.cards.push({ x, y, w: CARD_W, h: CARD_H, src: it.front, key: it.id + 'f' });
-          p.cards.push({ x, y: y + CARD_H, w: CARD_W, h: CARD_H, src: it.back, key: it.id + 'b', rotate: true });
+          p.cards.push({ x, y, w: CARD_W, h: CARD_H, src: it.front, key: it.id + 'f', svg: it.frontSvg });
+          p.cards.push({ x, y: y + CARD_H, w: CARD_W, h: CARD_H, src: it.back, key: it.id + 'b', svg: it.backSvg, rotate: true });
           p.outlines.push({ x, y, w: CARD_W, h: CARD_H * 2,
             fold: { x1: x - ext, y1: y + CARD_H, x2: x + CARD_W + ext, y2: y + CARD_H } });
         }
@@ -106,9 +106,15 @@
     const el = document.createElement('div');
     el.className = 'page';
     for (const c of page.cards) {
-      const img = document.createElement('img');
-      img.src = c.src;
-      img.alt = '';
+      let img;
+      if (c.svg) {
+        img = c.svg.cloneNode(true);
+        img.setAttribute('class', 'card-svg');
+      } else {
+        img = document.createElement('img');
+        img.src = c.src;
+        img.alt = '';
+      }
       img.style.left = pct(c.x, PAGE_W);
       img.style.top = pct(c.y, PAGE_H);
       img.style.width = pct(c.w, PAGE_W);
@@ -177,15 +183,22 @@
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
     const pages = pack(items, opts);
+    const vector = pages.some((p) => p.cards.some((c) => c.svg));
+    if (vector) await DH_VECTOR.preparePdf(doc);
     const rotated = new Map();
     for (const p of pages) {
       for (const c of p.cards) {
-        if (c.rotate && !rotated.has(c.key)) rotated.set(c.key, await rotate180(c.src));
+        if (!c.svg && c.rotate && !rotated.has(c.key)) rotated.set(c.key, await rotate180(c.src));
       }
     }
-    pages.forEach((p, i) => {
+    for (let i = 0; i < pages.length; i++) {
+      const p = pages[i];
       if (i > 0) doc.addPage('a4', 'portrait');
       for (const c of p.cards) {
+        if (c.svg) {
+          await DH_VECTOR.addSvgToPdf(doc, c.svg, c.x, c.y, c.w, c.h, c.rotate);
+          continue;
+        }
         const src = c.rotate ? rotated.get(c.key) : c.src;
         const fmt = src.startsWith('data:image/png') ? 'PNG' : 'JPEG';
         doc.addImage(src, fmt, c.x, c.y, c.w, c.h, c.key + (c.rotate ? 'r' : ''), 'NONE');
@@ -205,7 +218,7 @@
           }
         }
       }
-    });
+    }
     doc.save(filename || 'cartas-daggerheart-a4.pdf');
   }
 
@@ -213,7 +226,7 @@
     const root = document.getElementById('printRoot');
     root.innerHTML = '';
     pack(items, opts).forEach((p) => root.appendChild(pageElement(p, opts.cut)));
-    const imgs = [...root.querySelectorAll('img')];
+    const imgs = [...root.querySelectorAll('img, image')].filter((i) => i.decode);
     await Promise.all(imgs.map((img) => (img.decode ? img.decode().catch(() => null) : null)));
     window.print();
   }

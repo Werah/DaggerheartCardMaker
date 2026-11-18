@@ -223,7 +223,7 @@ button { font-family: inherit; }
   width: min(520px, 86vw); aspect-ratio: 210 / 297;
   box-shadow: 0 12px 40px rgba(0,0,0,.5);
 }
-.page img { position: absolute; display: block; }
+.page img, .page svg.card-svg { position: absolute; display: block; }
 .page svg.cut { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
 .sheet-list-title {
