@@ -136,6 +136,26 @@ button { font-family: inherit; }
 }
 .fmt-bar button:hover { border-color: var(--gold); }
 
+/* Lista de habilidades (Adversário / Ambiente) */
+.ability-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.ability { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 6px; }
+.ability-head { display: flex; gap: 4px; }
+.ability-head input {
+  flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 7px;
+  padding: 7px 9px; font-family: var(--font-ui); font-size: 14px; font-weight: 700; font-style: italic;
+}
+.ability-head button {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+  width: 30px; cursor: pointer; font-size: 12px; flex: none;
+}
+.ability-head button:disabled { opacity: .35; cursor: default; }
+.ability-head button:hover:not(:disabled) { border-color: var(--gold); }
+.ability textarea {
+  width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 7px;
+  padding: 7px 9px; font-family: var(--font-ui); font-size: 14px; resize: vertical; line-height: 1.45;
+}
+.ability-head input:focus, .ability textarea:focus { outline: none; border-color: var(--gold); }
+
 /* ---------- Stage ---------- */
 .stage {
   overflow: auto;
@@ -146,7 +166,7 @@ button { font-family: inherit; }
   position: relative;
 }
 .view { min-height: 100%; }
-#editorView { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 20px; }
+#editorView { display: flex; flex-direction: column; align-items: center; justify-content: safe center; padding: 30px 20px; }
 .preview-wrap { display: flex; gap: 28px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
 .card-fig { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .card-fig canvas {

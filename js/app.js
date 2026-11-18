@@ -92,6 +92,12 @@
     const run = () => {
       if (!renderPending) return;
       renderPending = false;
+      const h = R.cardHeight(cur());
+      for (const id of ['frontCanvas', 'backCanvas']) {
+        const c = $(id);
+        if (c.height !== h) c.height = h;
+        c.style.aspectRatio = `${R.W} / ${h}`;
+      }
       R.renderFront($('frontCanvas'), cur());
       if (app.back.enabled) R.renderBack($('backCanvas'), cur(), app.back);
     };
@@ -107,13 +113,14 @@
 
   async function renderOffscreen(s, back, scale = 1) {
     await R.whenReady(s, back);
+    const h = R.cardHeight(s);
     const front = document.createElement('canvas');
-    front.width = R.W * scale; front.height = R.H * scale;
+    front.width = R.W * scale; front.height = Math.round(h * scale);
     R.renderFront(front, s);
     let backC = null;
     if (back) {
       backC = document.createElement('canvas');
-      backC.width = R.W * scale; backC.height = R.H * scale;
+      backC.width = R.W * scale; backC.height = Math.round(h * scale);
       R.renderBack(backC, s, back);
     }
     return { front, back: backC };
@@ -163,7 +170,8 @@
   /* ------------------------------------------------------------------ */
   /* Formulário                                                          */
   /* ------------------------------------------------------------------ */
-  const TEXT_FIELDS = ['title', 'label', 'label2', 'subtitle', 'recall', 'description', 'text', 'artist', 'footer', 'color', 'gold', 'backTitle', 'backText'];
+  const TEXT_FIELDS = ['title', 'label', 'label2', 'subtitle', 'recall', 'description', 'text', 'artist', 'footer', 'color', 'gold', 'backTitle', 'backText',
+    'motives', 'impulses', 'difficulty', 'thresholds', 'advHp', 'advStress', 'atk', 'atkName', 'atkRange', 'atkDamage', 'adversaries'];
 
   function fillDomainSelect(sel) {
     sel.innerHTML = DH_ICONS.DOMAINS.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
@@ -210,6 +218,17 @@
     document.querySelectorAll('[data-feat]').forEach((el) => {
       el.classList.toggle('hidden', !el.dataset.feat.split(' ').some((f) => def.features.includes(f)));
     });
+    // data-unless: some quando o tipo tem o recurso (ex.: cartas de bloco não têm arte)
+    document.querySelectorAll('[data-unless]').forEach((el) => {
+      el.classList.toggle('hidden', el.dataset.unless.split(' ').some((f) => def.features.includes(f)));
+    });
+    $('labelFieldTitle').innerHTML = def.labelTitle
+      ? escapeHtml(def.labelTitle)
+      : 'Tipo da carta <small>(texto da faixa)</small>';
+    $('abilitiesSummary').textContent = def.abilitiesTitle || 'Habilidades';
+    $('addAbilityBtn').textContent = '+ Adicionar ' + (def.abilitiesTitle === 'Características' ? 'característica' : 'habilidade');
+    $('f_tier').value = String(s.tier || '1');
+    renderAbilities();
     document.querySelectorAll('#typeList button').forEach((b) => b.classList.toggle('active', b.dataset.type === t));
     $('editorTitle').textContent = 'Editar ' + typeName(t).toLowerCase();
     $('themeSummary').textContent = def.theme.title;
@@ -259,6 +278,71 @@
       $('f_stat' + n).value = s[st.key] ?? '';
     });
   }
+
+  /* ---------- lista de habilidades / características ---------- */
+  function renderAbilities() {
+    const s = cur();
+    const list = $('abilityList');
+    if (!T.has(s.type, 'abilities')) { list.innerHTML = ''; return; }
+    if (!Array.isArray(s.abilities)) s.abilities = [];
+    list.innerHTML = '';
+    s.abilities.forEach((a, i) => {
+      const el = document.createElement('div');
+      el.className = 'ability';
+      el.innerHTML = `
+        <div class="ability-head">
+          <input type="text" class="ab-title" placeholder="Nome (passiva)">
+          <button type="button" data-a="up" title="Mover para cima" ${i === 0 ? 'disabled' : ''}>▲</button>
+          <button type="button" data-a="down" title="Mover para baixo" ${i === s.abilities.length - 1 ? 'disabled' : ''}>▼</button>
+          <button type="button" data-a="del" title="Remover" class="btn-danger">✕</button>
+        </div>
+        <div class="fmt-bar">
+          <button type="button" data-fmt="**" title="Negrito"><b>N</b></button>
+          <button type="button" data-fmt="*" title="Itálico"><i>I</i></button>
+        </div>
+        <textarea class="ab-text" rows="3" placeholder="Texto"></textarea>`;
+      const title = el.querySelector('.ab-title');
+      const text = el.querySelector('.ab-text');
+      title.value = a.title || '';
+      text.value = a.text || '';
+      title.addEventListener('input', () => { a.title = title.value; changed(); });
+      text.addEventListener('input', () => { a.text = text.value; changed(); });
+      el.querySelectorAll('.fmt-bar button').forEach((b) => b.addEventListener('click', () => {
+        wrapSelection(text, b.dataset.fmt);
+        a.text = text.value;
+        changed();
+      }));
+      el.querySelectorAll('.ability-head button').forEach((b) => b.addEventListener('click', () => {
+        const arr = s.abilities;
+        if (b.dataset.a === 'up' && i > 0) [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+        if (b.dataset.a === 'down' && i < arr.length - 1) [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]];
+        if (b.dataset.a === 'del') {
+          if ((a.title || a.text) && !confirm(`Remover “${a.title || 'esta habilidade'}”?`)) return;
+          arr.splice(i, 1);
+        }
+        renderAbilities();
+        changed();
+      }));
+      list.appendChild(el);
+    });
+  }
+  function wrapSelection(ta, m) {
+    const { selectionStart: a, selectionEnd: z, value } = ta;
+    const sel = value.slice(a, z);
+    ta.value = value.slice(0, a) + m + sel + m + value.slice(z);
+    ta.focus();
+    ta.setSelectionRange(a + m.length, a + m.length + sel.length);
+  }
+  $('addAbilityBtn').addEventListener('click', () => {
+    const s = cur();
+    if (!Array.isArray(s.abilities)) s.abilities = [];
+    s.abilities.push({ title: '', text: '' });
+    renderAbilities();
+    changed();
+    const titles = $('abilityList').querySelectorAll('.ab-title');
+    if (titles.length) titles[titles.length - 1].focus();
+  });
+  $('f_tier').addEventListener('change', (e) => { cur().tier = e.target.value; changed(); });
 
   function changed() {
     scheduleRender();
@@ -596,7 +680,8 @@
     if (!window.jspdf) { toast('Biblioteca de PDF não carregou (verifique a internet).'); return; }
     const s = cur();
     const bc = backCfg();
-    const cw = DH_SHEET.CARD_W, chh = DH_SHEET.CARD_H;
+    const cw = DH_SHEET.CARD_W;
+    const chh = DH_SHEET.CARD_H * (R.cardHeight(s) / R.H);
     const w = bc ? cw * 2 : cw;
     await busy($('pdfBtn'), 'Gerando…', async () => {
       const doc = new window.jspdf.jsPDF({ unit: 'mm', format: [w, chh], orientation: w > chh ? 'landscape' : 'portrait', compress: true });
@@ -635,6 +720,7 @@
         back: back ? back.toDataURL('image/jpeg', 0.95) : null,
         state: clone(s),
         backCfg: bc ? clone(bc) : null,
+        h: front.height,
         qty: 1,
       };
       const idx = app.editingId ? app.sheet.items.findIndex((i) => i.id === app.editingId) : -1;

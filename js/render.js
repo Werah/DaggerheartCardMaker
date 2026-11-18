@@ -1,6 +1,10 @@
 /* Renderizador das cartas em canvas (750 x 1050 px = 63,5 x 88,9 mm a 300 dpi). */
 (function () {
-  const W = 750, H = 1050;
+  const W = 750, BASE_H = 1050;
+  // Altura atual do desenho. As cartas de bloco (Adversário, Ambiente) crescem para baixo
+  // conforme o texto; as demais têm sempre 1050 (88,9 mm).
+  let H = BASE_H;
+  const MAX_H = 3150; // 266,7 mm: o máximo que cabe na folha A4 sem espaço entre cartas
   const FONT_HEAD = '"Montserrat", "Arial Black", Arial, sans-serif';
   const FONT_BODY = '"Overpass", "Segoe UI", Arial, sans-serif';
   const INK = '#1f1d22';
@@ -212,11 +216,12 @@
       }
       if (cur.length) words.push(cur);
 
-      let line = [], lineW = 0, pendingSpace = false;
+      // indent0: recuo da 1ª linha do parágrafo; hang: recuo das linhas seguintes
+      let line = [], lineW = p.indent0 || 0, pendingSpace = false;
       const flush = () => {
         out.push({ y, segs: line });
         y += lh;
-        line = []; lineW = 0; pendingSpace = false;
+        line = []; lineW = p.hang || 0; pendingSpace = false;
       };
       for (const w of words) {
         if (w === null) { if (line.length) pendingSpace = true; continue; }
@@ -774,9 +779,180 @@
     drawFooter(ctx, s);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Bloco de estatísticas (Adversário, Ambiente) — altura variável      */
+  /* ------------------------------------------------------------------ */
+  const STAT_BG = '#f4f0e6', STAT_BOX = '#fbf9f3', STAT_BORDER = '#b7ab94', STAT_RULE = '#2a2730';
+  const STAT_X = 46, STAT_W = W - 92;
+
+  function statBlocks(s) {
+    const def = DH_TYPES.get(s.type);
+    const has = (f) => def.features.includes(f);
+    const val = (v) => String(v ?? '').trim();
+    const blocks = [{ kind: 'title', text: val(s.title).toUpperCase() }];
+    const tier = val(s.tier) ? `(${val(s.tier)}º patamar)` : '';
+    const typeLine = [val(s.label), tier].filter(Boolean).join(' ');
+    if (typeLine) blocks.push({ kind: 'rich', text: `***${typeLine}***`, after: 0.1 });
+    const desc = has('subtitle') ? val(s.subtitle) : val(s.description);
+    if (desc) blocks.push({ kind: 'rich', text: desc, italic: true });
+    if (has('motives') && val(s.motives)) blocks.push({ kind: 'rich', text: `**Motivações e táticas:** ${val(s.motives)}` });
+    if (has('impulses') && val(s.impulses)) blocks.push({ kind: 'rich', text: `**Impulsos:** ${val(s.impulses)}` });
+
+    const lines = [];
+    if (has('advstats')) {
+      const l1 = [];
+      if (val(s.difficulty)) l1.push(`**Dificuldade:** ${val(s.difficulty)}`);
+      if (val(s.thresholds)) l1.push(`**Limiares:** ${val(s.thresholds)}`);
+      if (val(s.advHp)) l1.push(`${val(s.advHp)} **PV**`);
+      if (val(s.advStress)) l1.push(`${val(s.advStress)} **PF**`);
+      const l2 = [];
+      if (val(s.atk)) l2.push(`**ATQ:** ${val(s.atk)}`);
+      const atk = [val(s.atkName) && `**${val(s.atkName)}:**`, val(s.atkRange)].filter(Boolean).join(' ');
+      if (atk) l2.push(atk);
+      if (val(s.atkDamage)) l2.push(val(s.atkDamage));
+      if (l1.length) lines.push(l1.join(' | '));
+      if (l2.length) lines.push(l2.join(' | '));
+    }
+    if (has('envstats')) {
+      if (val(s.difficulty)) lines.push(`**Dificuldade:** ${val(s.difficulty)}`);
+      if (val(s.adversaries)) lines.push(`**Adversários:** ${val(s.adversaries)}`);
+    }
+    if (lines.length) blocks.push({ kind: 'box', text: lines.join('\n') });
+
+    const abilities = (Array.isArray(s.abilities) ? s.abilities : [])
+      .filter((a) => a && (val(a.title) || val(a.text)));
+    if (abilities.length) {
+      blocks.push({ kind: 'heading', text: String(def.abilitiesTitle || 'Habilidades').toUpperCase() });
+      abilities.forEach((a) => blocks.push({ kind: 'ability', title: val(a.title), text: String(a.text || '') }));
+    }
+    return blocks;
+  }
+
+  function wrapHead(ctx, text, maxW, size, weight) {
+    ctx.font = headFont(size, weight);
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      const t = cur ? cur + ' ' + w : w;
+      if (cur && ctx.measureText(t).width > maxW) { lines.push(cur); cur = w; } else cur = t;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  function abilityParas(b, size) {
+    const hang = size * 0.95;
+    const paras = parseRich(b.text, false);
+    const first = paras[0] || { runs: [], blank: true };
+    const runs = [];
+    if (b.title) {
+      const t = /[:：]$/.test(b.title) ? b.title : b.title + ':';
+      runs.push({ text: t, bold: true, italic: true });
+      if (first.runs.length) runs.push({ text: ' ', bold: false, italic: false });
+    }
+    const out = [{ runs: runs.concat(first.runs), indent0: 0, hang }];
+    for (const p of paras.slice(1)) out.push(p.blank ? p : { ...p, indent0: hang, hang });
+    return out;
+  }
+
+  function statLayout(ctx, s, size) {
+    const blocks = statBlocks(s);
+    const items = [];
+    let y = 54;
+    for (const b of blocks) {
+      if (b.kind === 'title') {
+        let ts = size * 2.25;
+        let lines = wrapHead(ctx, b.text, STAT_W, ts, 900);
+        while (lines.length > 3 && ts > size * 1.4) { ts -= 2; lines = wrapHead(ctx, b.text, STAT_W, ts, 900); }
+        items.push({ kind: 'title', lines, y, size: ts });
+        y += lines.length * ts * 0.98 + size * 0.35;
+      } else if (b.kind === 'rich') {
+        const lay = layoutRich(ctx, parseRich(b.text, b.italic), STAT_W, size);
+        items.push({ kind: 'rich', lay, y });
+        y += lay.height + size * (b.after != null ? b.after : 0.3);
+      } else if (b.kind === 'box') {
+        y += size * 0.25;
+        const pad = size * 0.55;
+        const lay = layoutRich(ctx, parseRich(b.text, false), STAT_W - 24, size);
+        const h = lay.height + pad * 2;
+        items.push({ kind: 'box', lay, y, h, pad });
+        y += h + size * 0.75;
+      } else if (b.kind === 'heading') {
+        const hs = size * 1.3;
+        items.push({ kind: 'heading', text: b.text, y, size: hs });
+        y += hs * 1.05 + size * 0.3;
+      } else if (b.kind === 'ability') {
+        const lay = layoutRich(ctx, abilityParas(b, size), STAT_W, size);
+        items.push({ kind: 'rich', lay, y });
+        y += lay.height + size * 0.5;
+      }
+    }
+    return { items, height: Math.max(BASE_H, Math.ceil(y + 80)), size };
+  }
+
+  // Escolhe o tamanho do texto: o pedido pelo usuário, reduzido só se passar do máximo da folha
+  function statFit(ctx, s) {
+    const base = 25 * (s.textScale || 1);
+    let size = base;
+    let L = statLayout(ctx, s, size);
+    while (L.height > MAX_H && size > base * 0.5) {
+      size -= 0.5;
+      L = statLayout(ctx, s, size);
+    }
+    L.height = Math.min(L.height, MAX_H);
+    return L;
+  }
+
+  function drawStatBlock(ctx, s) {
+    const L = statFit(ctx, s);
+    const img = s.bg && s.bg.src ? getImg(s.bg.src) : null;
+    if (img) drawBase(ctx, s);
+    else { ctx.fillStyle = STAT_BG; ctx.fillRect(0, 0, W, H); }
+    ctx.save();
+    roundRect(ctx, 12, 12, W - 24, H - 24, 24);
+    ctx.strokeStyle = STAT_BORDER;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    for (const it of L.items) {
+      if (it.kind === 'title') {
+        ctx.fillStyle = '#121014';
+        ctx.font = headFont(it.size, 900);
+        it.lines.forEach((ln, i) => ctx.fillText(ln, STAT_X, it.y + it.size * 0.8 + i * it.size * 0.98));
+      } else if (it.kind === 'rich') {
+        drawRich(ctx, it.lay, STAT_X, it.y, INK);
+      } else if (it.kind === 'box') {
+        ctx.fillStyle = STAT_BOX;
+        ctx.fillRect(STAT_X - 10, it.y, STAT_W + 20, it.h);
+        ctx.fillStyle = STAT_RULE;
+        ctx.fillRect(STAT_X - 10, it.y, STAT_W + 20, 2.5);
+        ctx.fillRect(STAT_X - 10, it.y + it.h - 2.5, STAT_W + 20, 2.5);
+        drawRich(ctx, it.lay, STAT_X + 12, it.y + it.pad, INK);
+      } else if (it.kind === 'heading') {
+        ctx.fillStyle = '#121014';
+        ctx.font = headFont(it.size, 800);
+        ctx.fillText(it.text, STAT_X, it.y + it.size * 0.85);
+      }
+    }
+    drawFooter(ctx, s);
+  }
+
+  const heightCtx = document.createElement('canvas').getContext('2d');
+  // Altura lógica (px de 750 de largura) que a carta precisa
+  function cardHeight(s) {
+    if (DH_TYPES.get(s.type).layout !== 'statblock') return BASE_H;
+    return statFit(heightCtx, s).height;
+  }
+
   function renderFront(canvas, s) {
     const ctx = canvas.getContext('2d');
-    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    const k = canvas.width / W;
+    H = canvas.height / k;
+    ctx.setTransform(k, 0, 0, k, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, W, H);
@@ -785,12 +961,15 @@
     const layout = DH_TYPES.get(s.type).layout;
     if (layout === 'ancestry') drawAncestry(ctx, s);
     else if (layout === 'community') drawCommunity(ctx, s);
+    else if (layout === 'statblock') drawStatBlock(ctx, s);
     else drawStandard(ctx, s);
   }
 
   function renderBack(canvas, s, back) {
     const ctx = canvas.getContext('2d');
-    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    const k = canvas.width / W;
+    H = canvas.height / k;
+    ctx.setTransform(k, 0, 0, k, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, W, H);
@@ -950,7 +1129,7 @@
   }
 
   window.DH_RENDER = {
-    W, H,
+    W, H: BASE_H, MAX_H, cardHeight,
     renderFront, renderBack, whenReady, ensureFonts, loadImg, coverCrop,
     setOnImageLoad(fn) { onImageLoad = fn; },
   };

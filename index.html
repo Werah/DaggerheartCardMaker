@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&family=Overpass:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600;1,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=13">
+  <link rel="stylesheet" href="css/style.css?v=15">
 </head>
 <body>
   <div class="app">
@@ -114,7 +114,7 @@
           <button class="btn btn-sm btn-ghost" id="resetBtn" title="Restaurar o exemplo deste tipo">Nova carta</button>
         </div>
 
-        <details open class="group">
+        <details open class="group" data-unless="statcard">
           <summary>Imagem da carta</summary>
           <div class="img-row">
             <div class="img-thumb" id="artThumb"><span>Sem imagem</span></div>
@@ -150,9 +150,17 @@
           <label class="field">Título
             <input type="text" id="f_title">
           </label>
-          <label class="field">Tipo da carta <small>(texto da faixa)</small>
+          <label class="field"><span id="labelFieldTitle">Tipo da carta <small>(texto da faixa)</small></span>
             <input type="text" id="f_label" list="labelList">
             <datalist id="labelList"></datalist>
+          </label>
+          <label class="field" data-feat="tier">Patamar
+            <select id="f_tier">
+              <option value="1">1º patamar</option>
+              <option value="2">2º patamar</option>
+              <option value="3">3º patamar</option>
+              <option value="4">4º patamar</option>
+            </select>
           </label>
           <label class="check-field" data-feat="multiclass"><input type="checkbox" id="f_multiclass"> Multiclasse</label>
           <label class="field hidden" id="label2Field">Segunda classe <small>(segunda faixa)</small>
@@ -184,7 +192,54 @@
           <label class="field" data-feat="description">Descrição <small>(itálico)</small>
             <textarea id="f_description" rows="3"></textarea>
           </label>
-          <label class="field">Texto da habilidade
+          <label class="field" data-feat="motives">Motivações e táticas
+            <input type="text" id="f_motives" placeholder="debilitar, demolir, devorar">
+          </label>
+          <label class="field" data-feat="impulses">Impulsos
+            <input type="text" id="f_impulses" placeholder="arrastar despreparados, dividir a terra">
+          </label>
+          <div class="field-row" data-feat="difficulty">
+            <label class="field">Dificuldade
+              <input type="text" id="f_difficulty" maxlength="8">
+            </label>
+            <label class="field" data-feat="advstats">Limiares
+              <input type="text" id="f_thresholds" placeholder="35/71" maxlength="16">
+            </label>
+          </div>
+          <div data-feat="advstats">
+            <div class="field-row">
+              <label class="field">PV <small>(Pontos de Vida)</small>
+                <input type="text" id="f_advHp" maxlength="6">
+              </label>
+              <label class="field">PF <small>(Pontos de Fadiga)</small>
+                <input type="text" id="f_advStress" maxlength="6">
+              </label>
+            </div>
+            <div class="field-row">
+              <label class="field">ATQ
+                <input type="text" id="f_atk" placeholder="+2d4" maxlength="12">
+              </label>
+              <label class="field">Dano
+                <input type="text" id="f_atkDamage" placeholder="4d6+13 mág" maxlength="24">
+              </label>
+            </div>
+            <div class="field-row">
+              <label class="field">Nome do ataque
+                <input type="text" id="f_atkName" placeholder="Pseudópode gigante">
+              </label>
+              <label class="field">Distância
+                <input type="text" id="f_atkRange" list="rangeList" placeholder="muito próximo">
+                <datalist id="rangeList">
+                  <option value="corpo a corpo"><option value="muito próximo"><option value="próximo">
+                  <option value="distante"><option value="muito distante">
+                </datalist>
+              </label>
+            </div>
+          </div>
+          <label class="field" data-feat="envstats">Adversários
+            <textarea id="f_adversaries" rows="2" placeholder="feras (urso, cobra-de-vidro), bando do Punhal Escarpado"></textarea>
+          </label>
+          <label class="field" data-unless="statcard">Texto da habilidade
             <div class="fmt-bar" data-target="f_text">
               <button type="button" data-fmt="**" title="Negrito"><b>N</b></button>
               <button type="button" data-fmt="*" title="Itálico"><i>I</i></button>
@@ -192,11 +247,19 @@
             </div>
             <textarea id="f_text" rows="8"></textarea>
           </label>
-          <p class="hint">Formatação: <code>**negrito**</code>, <code>*itálico*</code>, <code>***nome da habilidade:***</code>. Uma linha em branco cria um espaço extra.</p>
+          <p class="hint" data-unless="statcard">Formatação: <code>**negrito**</code>, <code>*itálico*</code>, <code>***nome da habilidade:***</code>. Uma linha em branco cria um espaço extra.</p>
           <label class="field">Tamanho do texto <output id="o_textScale">100%</output>
             <input type="range" id="f_textScale" min="60" max="140" step="5">
           </label>
-          <p class="hint small">O texto diminui sozinho se não couber na carta.</p>
+          <p class="hint small" data-unless="statcard">O texto diminui sozinho se não couber na carta.</p>
+          <p class="hint small" data-feat="statcard">Esta carta começa no tamanho de carta de poker e cresce para baixo conforme o texto.</p>
+        </details>
+
+        <details open class="group" data-feat="abilities">
+          <summary id="abilitiesSummary">Habilidades</summary>
+          <div id="abilityList" class="ability-list"></div>
+          <button type="button" class="btn btn-sm" id="addAbilityBtn">+ Adicionar</button>
+          <p class="hint">O título sai em <b><i>negrito e itálico</i></b>, seguido de dois-pontos — por exemplo <code>Forma Caótica (passiva)</code>. No texto vale <code>**negrito**</code> e <code>*itálico*</code>; cada nova linha vira um parágrafo recuado (bom para as perguntas em itálico dos ambientes).</p>
         </details>
 
         <details open class="group" id="themeGroup">
@@ -305,12 +368,12 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas2svg@1.0.16/canvas2svg.js"></script>
-  <script src="js/icons.js?v=13"></script>
-  <script src="js/types.js?v=13"></script>
-  <script src="js/render.js?v=13"></script>
-  <script src="js/cropper.js?v=13"></script>
-  <script src="js/sheet.js?v=13"></script>
-  <script src="js/vector.js?v=13"></script>
-  <script src="js/app.js?v=13"></script>
+  <script src="js/icons.js?v=15"></script>
+  <script src="js/types.js?v=15"></script>
+  <script src="js/render.js?v=15"></script>
+  <script src="js/cropper.js?v=15"></script>
+  <script src="js/sheet.js?v=15"></script>
+  <script src="js/vector.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

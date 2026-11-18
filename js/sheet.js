@@ -3,15 +3,19 @@
   const CARD_W = 63.5, CARD_H = 88.9;   // mm (2,5" x 3,5")
   const PAGE_W = 210, PAGE_H = 297;     // A4
   const COLS = 3, ROWS = 3;
+  const BASE_PX = 1050;                 // altura de uma carta normal no renderizador
 
   /*
-   * Distribui as cartas numa grade de 3 x 3 vagas por página.
+   * Distribui as cartas em 3 colunas por página. Cada coluna guarda até onde já está
+   * ocupada, então cartas de alturas diferentes (Adversário e Ambiente crescem para
+   * baixo) se encaixam umas embaixo das outras. Com cartas de tamanho normal, o
+   * resultado é a mesma grade de 3 x 3.
    *
    * Vinculado (padrão): frente e verso ficam colados para dobrar.
-   *   - primeiro tenta o par deitado (frente | verso) numa linha;
+   *   - primeiro tenta o par deitado (frente | verso), ocupando duas colunas;
    *   - se não couber, tenta o par em pé (frente em cima, verso embaixo, girado 180°
-   *     para ficar na posição certa depois de dobrar) numa coluna livre;
-   *   - cartas sem verso ocupam qualquer vaga livre.
+   *     para ficar na posição certa depois de dobrar) numa coluna;
+   *   - cartas sem verso vão para o espaço livre mais alto da página.
    * Quebrar vínculo (opts.unlink): cada frente e cada verso vira uma carta solta,
    *   em sequência: Carta1, Verso1, Carta2 / Verso2, Carta3, Verso3 / ...
    */
@@ -24,79 +28,92 @@
     });
 
     const gridW = COLS * CARD_W + (COLS - 1) * gap;
-    const gridH = ROWS * CARD_H + (ROWS - 1) * gap;
-    const x0 = (PAGE_W - gridW) / 2, y0 = (PAGE_H - gridH) / 2;
+    const usableH = ROWS * CARD_H + (ROWS - 1) * gap;
+    const x0 = (PAGE_W - gridW) / 2, y0 = (PAGE_H - usableH) / 2;
     const colX = (c) => x0 + c * (CARD_W + gap);
-    const rowY = (r) => y0 + r * (CARD_H + gap);
     const ext = Math.min(3, gap * 0.9);
+    const heightOf = (it) => CARD_H * ((Number(it.h) || BASE_PX) / BASE_PX);
+    const EPS = 0.01;
+
     const pages = [];
     const newPage = () => {
-      const p = { cards: [], outlines: [], grid: Array.from({ length: ROWS }, () => new Array(COLS).fill(false)) };
+      const p = { cards: [], outlines: [], cols: new Array(COLS).fill(0) };
       pages.push(p);
       return p;
     };
-    const single = (page, r, c, src, key, svg) => {
-      page.grid[r][c] = true;
-      page.cards.push({ x: colX(c), y: rowY(r), w: CARD_W, h: CARD_H, src, key, svg });
-      page.outlines.push({ x: colX(c), y: rowY(r), w: CARD_W, h: CARD_H, fold: null });
+    // posição mais alta (e mais à esquerda) onde cabe um bloco de `span` colunas e altura h
+    const best = (p, span, h) => {
+      let pick = null;
+      for (let c = 0; c + span <= COLS; c++) {
+        let y = 0;
+        for (let k = 0; k < span; k++) y = Math.max(y, p.cols[c + k]);
+        if (y + h > usableH + EPS) continue;
+        if (!pick || y < pick.y - EPS) pick = { c, y };
+      }
+      return pick;
+    };
+    const occupy = (p, c, span, y, h) => {
+      for (let k = 0; k < span; k++) p.cols[c + k] = y + h + gap;
+    };
+    const placeSingle = (p, spot, h, src, key, svg) => {
+      const x = colX(spot.c), y = y0 + spot.y;
+      occupy(p, spot.c, 1, spot.y, h);
+      p.cards.push({ x, y, w: CARD_W, h, src, key, svg });
+      p.outlines.push({ x, y, w: CARD_W, h, fold: null });
+    };
+    const findSingle = (h, onlyLast) => {
+      const list = onlyLast ? pages.slice(-1) : pages;
+      for (const p of list) { const b = best(p, 1, h); if (b) return { p, b }; }
+      const p = newPage();
+      return { p, b: best(p, 1, h) || { c: 0, y: 0 } };
     };
 
     if (opts.unlink) {
-      const seq = [];
       units.forEach((it) => {
-        seq.push({ src: it.front, key: it.id + 'f', svg: it.frontSvg });
-        if (it.back) seq.push({ src: it.back, key: it.id + 'b', svg: it.backSvg });
-      });
-      seq.forEach((card, i) => {
-        const slot = i % (COLS * ROWS);
-        const page = slot === 0 ? newPage() : pages[pages.length - 1];
-        single(page, Math.floor(slot / COLS), slot % COLS, card.src, card.key, card.svg);
+        const h = heightOf(it);
+        let f = findSingle(h, true);
+        placeSingle(f.p, f.b, h, it.front, it.id + 'f', it.frontSvg);
+        if (it.back) {
+          f = findSingle(h, true);
+          placeSingle(f.p, f.b, h, it.back, it.id + 'b', it.backSvg);
+        }
       });
     } else {
-      const free = (p, r, c) => r < ROWS && c < COLS && !p.grid[r][c];
-      const findIn = (p, test) => {
-        for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (test(p, r, c)) return { p, r, c };
-        return null;
-      };
-      const horiz = (p, r, c) => free(p, r, c) && free(p, r, c + 1);
-      const vert = (p, r, c) => free(p, r, c) && free(p, r + 1, c);
-
       for (const it of units) {
+        const h = heightOf(it);
         if (!it.back) {
-          let s = null;
-          for (const p of pages) { s = findIn(p, free); if (s) break; }
-          if (!s) s = { p: newPage(), r: 0, c: 0 };
-          single(s.p, s.r, s.c, it.front, it.id + 'f', it.frontSvg);
+          const f = findSingle(h, false);
+          placeSingle(f.p, f.b, h, it.front, it.id + 'f', it.frontSvg);
           continue;
         }
         // na mesma página: deitado primeiro, depois em pé; só então abre página nova
-        let spot = null, mode = null;
+        let page = null, spot = null, mode = null;
         for (const p of pages) {
-          spot = findIn(p, horiz); mode = 'h';
-          if (spot) break;
-          spot = findIn(p, vert); mode = 'v';
-          if (spot) break;
+          spot = best(p, 2, h); mode = 'h';
+          if (spot) { page = p; break; }
+          spot = best(p, 1, h * 2); mode = 'v';
+          if (spot) { page = p; break; }
         }
-        if (!spot) { spot = { p: newPage(), r: 0, c: 0 }; mode = 'h'; }
-        const { p, r, c } = spot;
+        if (!page) { page = newPage(); spot = best(page, 2, h) || { c: 0, y: 0 }; mode = 'h'; }
+        const p = page;
         if (mode === 'h') {
-          p.grid[r][c] = p.grid[r][c + 1] = true;
-          const x = colX(c) + gap / 2, y = rowY(r);
-          p.cards.push({ x, y, w: CARD_W, h: CARD_H, src: it.front, key: it.id + 'f', svg: it.frontSvg });
-          p.cards.push({ x: x + CARD_W, y, w: CARD_W, h: CARD_H, src: it.back, key: it.id + 'b', svg: it.backSvg });
-          p.outlines.push({ x, y, w: CARD_W * 2, h: CARD_H,
-            fold: { x1: x + CARD_W, y1: y - ext, x2: x + CARD_W, y2: y + CARD_H + ext } });
+          occupy(p, spot.c, 2, spot.y, h);
+          const x = colX(spot.c) + gap / 2, y = y0 + spot.y;
+          p.cards.push({ x, y, w: CARD_W, h, src: it.front, key: it.id + 'f', svg: it.frontSvg });
+          p.cards.push({ x: x + CARD_W, y, w: CARD_W, h, src: it.back, key: it.id + 'b', svg: it.backSvg });
+          p.outlines.push({ x, y, w: CARD_W * 2, h,
+            fold: { x1: x + CARD_W, y1: y - ext, x2: x + CARD_W, y2: y + h + ext } });
         } else {
-          p.grid[r][c] = p.grid[r + 1][c] = true;
-          const x = colX(c), y = rowY(r) + gap / 2;
-          p.cards.push({ x, y, w: CARD_W, h: CARD_H, src: it.front, key: it.id + 'f', svg: it.frontSvg });
-          p.cards.push({ x, y: y + CARD_H, w: CARD_W, h: CARD_H, src: it.back, key: it.id + 'b', svg: it.backSvg, rotate: true });
-          p.outlines.push({ x, y, w: CARD_W, h: CARD_H * 2,
-            fold: { x1: x - ext, y1: y + CARD_H, x2: x + CARD_W + ext, y2: y + CARD_H } });
+          occupy(p, spot.c, 1, spot.y, h * 2);
+          const x = colX(spot.c), y = y0 + spot.y;
+          p.cards.push({ x, y, w: CARD_W, h, src: it.front, key: it.id + 'f', svg: it.frontSvg });
+          p.cards.push({ x, y: y + h, w: CARD_W, h, src: it.back, key: it.id + 'b', svg: it.backSvg, rotate: true });
+          p.outlines.push({ x, y, w: CARD_W, h: h * 2,
+            fold: { x1: x - ext, y1: y + h, x2: x + CARD_W + ext, y2: y + h } });
         }
       }
     }
-    pages.forEach((p) => delete p.grid);
+    pages.forEach((p) => delete p.cols);
     return pages;
   }
 

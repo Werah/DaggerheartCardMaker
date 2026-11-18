@@ -123,13 +123,14 @@
 
   // Desenha a frente ou o verso como <svg> (as imagens precisam estar carregadas: DH_RENDER.whenReady)
   function cardSvg(state, back, side) {
-    const c2s = new C2S(W, H);
+    const h = DH_RENDER.cardHeight(state);
+    const c2s = new C2S(W, h);
     const ctx = vectorContext(c2s);
-    const fakeCanvas = { width: W, height: H, getContext: () => ctx };
+    const fakeCanvas = { width: W, height: h, getContext: () => ctx };
     if (side === 'back') DH_RENDER.renderBack(fakeCanvas, state, back);
     else DH_RENDER.renderFront(fakeCanvas, state);
     const svg = c2s.getSvg();
-    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('viewBox', `0 0 ${W} ${h}`);
     svg.setAttribute('preserveAspectRatio', 'none');
     svg.removeAttribute('width');
     svg.removeAttribute('height');
@@ -176,6 +177,7 @@
   let holder = null;
   async function addSvgToPdf(doc, svg, x, y, w, h, rotate) {
     const el = svg.cloneNode(true);
+    const vh = Number((el.getAttribute('viewBox') || '').split(/\s+/)[3]) || H;
     el.querySelectorAll('text').forEach((t) => {
       t.setAttribute('font-family', pdfFontName(t.getAttribute('font-family'), t.getAttribute('font-weight'), t.getAttribute('font-style')));
       t.setAttribute('font-weight', 'normal');
@@ -184,12 +186,12 @@
     });
     if (rotate) {
       const g = document.createElementNS(NS, 'g');
-      g.setAttribute('transform', `rotate(180 ${W / 2} ${H / 2})`);
+      g.setAttribute('transform', `rotate(180 ${W / 2} ${vh / 2})`);
       while (el.firstChild) g.appendChild(el.firstChild);
       el.appendChild(g);
     }
     el.setAttribute('width', W);
-    el.setAttribute('height', H);
+    el.setAttribute('height', vh);
     if (!holder) {
       holder = document.createElement('div');
       holder.style.cssText = 'position:fixed;left:-99999px;top:0;width:0;height:0;overflow:hidden';

@@ -15,11 +15,21 @@
  *   dom2        → segundo domínio/ícone no estandarte
  *   itemKind    → seletor Arma / Armadura / Outro
  *   multiclass  → caixa "Multiclasse" e uma segunda faixa de classe
+ *   tier        → Patamar (1 a 4)
+ *   motives     → Motivações e táticas        impulses → Impulsos
+ *   difficulty  → Dificuldade
+ *   advstats    → Limiares, PV, PF e ataque    envstats → Adversários
+ *   abilities   → lista de habilidades/características (título + texto)
+ *   statcard    → carta de bloco: sem arte e sem o texto único de habilidade
+ *
+ * layout 'statblock' = carta que cresce para baixo conforme o texto.
  */
 (function () {
   const BASE_STATE = {
     title: '', label: '', label2: '', multiclass: false, subtitle: '', level: 1, recall: '', description: '', text: '',
-    evasion: '', hp: '', itemKind: 'weapon', trait: '', damage: '', armor: '', threshold: '',
+    evasion: '', hp: '', itemKind: 'weapon',
+    tier: '1', motives: '', impulses: '', difficulty: '', thresholds: '', advHp: '', advStress: '',
+    atk: '', atkName: '', atkRange: '', atkDamage: '', adversaries: '', abilities: [], trait: '', damage: '', armor: '', threshold: '',
     color: '#4e345b', gold: '#e7b93c',
     dom1: { preset: 'arcana', icon: null }, dom2: { preset: 'blade', icon: null },
     iconKeepColors: false, textScale: 1, artist: '', footer: 'Homebrew', art: null,
@@ -167,8 +177,48 @@
     },
   };
 
+  DEFS.adversary = {
+    name: 'Adversário', icon: '👹', layout: 'statblock',
+    features: ['subtitle', 'tier', 'motives', 'difficulty', 'advstats', 'abilities', 'statcard'],
+    labelTitle: 'Tipo',
+    abilitiesTitle: 'Habilidades',
+    labels: ['Brutamonte', 'Horda', 'Lacaio', 'Líder', 'Padrão', 'Furtivo', 'Atirador', 'Solo', 'Suporte', 'Social'],
+    example: {
+      title: 'Guardião de Pedra Rúnica', label: 'Brutamonte', tier: '2', color: '#5b5b7a',
+      dom1: { preset: 'custom', icon: null },
+      subtitle: 'Uma estátua desperta por runas antigas, lenta e implacável.',
+      motives: 'esmagar, proteger o santuário, resistir',
+      difficulty: '14', thresholds: '10/20', advHp: '6', advStress: '3',
+      atk: '+3', atkName: 'Punho de Pedra', atkRange: 'corpo a corpo', atkDamage: '2d10+3 fís',
+      abilities: [
+        { title: 'Pele de Granito (passiva)', text: 'Reduza em **2** todo dano físico que o guardião sofrer.' },
+        { title: 'Pancada Sísmica (ação)', text: '**Gaste 1 Ponto de Medo** para golpear o chão. Todos os alvos em alcance muito próximo devem passar em um teste de reação de Agilidade ou caem e ficam *Vulneráveis*.' },
+        { title: 'Runas Instáveis (reação)', text: 'Quando o guardião marcar seu último PV, ele explode: alvos em alcance próximo sofrem **1d8** pontos de dano mágico.' },
+      ],
+    },
+  };
+  DEFS.environment = {
+    name: 'Ambiente', icon: '🏞', layout: 'statblock',
+    features: ['description', 'tier', 'impulses', 'difficulty', 'envstats', 'abilities', 'statcard'],
+    labelTitle: 'Tipo',
+    abilitiesTitle: 'Características',
+    labels: ['Travessia', 'Exploração', 'Social', 'Evento'],
+    example: {
+      title: 'Ponte de Cordas Podres', label: 'Travessia', tier: '1', color: '#3f5f4a',
+      dom1: { preset: 'sage', icon: null },
+      description: 'Uma ponte suspensa sobre um abismo enevoado, rangendo a cada passo.',
+      impulses: 'ceder, separar o grupo, revelar o abismo',
+      difficulty: '11',
+      adversaries: 'harpias (2), bandoleiro da ponte',
+      abilities: [
+        { title: 'Tábuas Soltas (passiva)', text: 'Atravessar a ponte exige uma Contagem de Progresso (3). Quem falhar com Medo fica pendurado à beira da ponte.\n*O que o grupo vê lá embaixo, entre a névoa?*' },
+        { title: 'Corda Partida (ação)', text: '**Gaste 1 Ponto de Medo** para romper uma das cordas. Cada personagem na ponte deve fazer um teste de reação de Instinto ou sofre **1d8** pontos de dano físico.\n*Quem cortou a corda? Ainda está por perto?*' },
+      ],
+    },
+  };
+
   // Ordem no menu lateral
-  const ORDER = ['class', 'subclass', 'ancestry', 'community', 'domain', 'item', 'ally'];
+  const ORDER = ['class', 'subclass', 'ancestry', 'community', 'domain', 'item', 'ally', 'adversary', 'environment'];
 
   const resolved = {};
   for (const id of Object.keys(DEFS)) resolved[id] = { ...DEFAULT_DEF, ...DEFS[id], id };
