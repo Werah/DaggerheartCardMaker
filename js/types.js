@@ -182,6 +182,13 @@
     features: ['subtitle', 'tier', 'motives', 'difficulty', 'advstats', 'abilities', 'statcard'],
     labelTitle: 'Tipo',
     abilitiesTitle: 'Habilidades',
+    // Estatísticas improvisadas por patamar (índice 0 = 1º patamar)
+    tierTable: {
+      atk: ['+1', '+2', '+3', '+4'],
+      damage: [['1d6+2', '1d12+4'], ['2d6+3', '2d12+4'], ['3d8+3', '3d12+5'], ['4d8+10', '4d12+15']],
+      difficulty: ['11', '14', '17', '20'],
+      thresholds: ['7/12', '10/20', '20/32', '25/45'],
+    },
     labels: ['Brutamonte', 'Horda', 'Lacaio', 'Líder', 'Padrão', 'Furtivo', 'Atirador', 'Solo', 'Suporte', 'Social'],
     example: {
       title: 'Guardião de Pedra Rúnica', label: 'Brutamonte', tier: '2', color: '#5b5b7a',
@@ -189,7 +196,7 @@
       subtitle: 'Uma estátua desperta por runas antigas, lenta e implacável.',
       motives: 'esmagar, proteger o santuário, resistir',
       difficulty: '14', thresholds: '10/20', advHp: '6', advStress: '3',
-      atk: '+3', atkName: 'Punho de Pedra', atkRange: 'corpo a corpo', atkDamage: '2d10+3 fís',
+      atk: '+2', atkName: 'Punho de Pedra', atkRange: 'corpo a corpo', atkDamage: '2d6+3 fís',
       abilities: [
         { title: 'Pele de Granito (passiva)', text: 'Reduza em **2** todo dano físico que o guardião sofrer.' },
         { title: 'Pancada Sísmica (ação)', text: '**Gaste 1 Ponto de Medo** para golpear o chão. Todos os alvos em alcance muito próximo devem passar em um teste de reação de Agilidade ou caem e ficam *Vulneráveis*.' },
@@ -202,6 +209,11 @@
     features: ['description', 'tier', 'impulses', 'difficulty', 'envstats', 'abilities', 'statcard'],
     labelTitle: 'Tipo',
     abilitiesTitle: 'Características',
+    // Estatísticas de ambientes por patamar (índice 0 = 1º patamar)
+    tierTable: {
+      damage: [['1d6+1', '1d8+3'], ['2d6+3', '2d10+2'], ['3d8+3', '3d10+1'], ['4d8+3', '4d10+10']],
+      difficulty: ['11', '14', '17', '20'],
+    },
     labels: ['Travessia', 'Exploração', 'Social', 'Evento'],
     example: {
       title: 'Ponte de Cordas Podres', label: 'Travessia', tier: '1', color: '#3f5f4a',

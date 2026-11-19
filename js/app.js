@@ -228,6 +228,7 @@
     $('abilitiesSummary').textContent = def.abilitiesTitle || 'Habilidades';
     $('addAbilityBtn').textContent = '+ Adicionar ' + (def.abilitiesTitle === 'Características' ? 'característica' : 'habilidade');
     $('f_tier').value = String(s.tier || '1');
+    updateTierHint();
     renderAbilities();
     document.querySelectorAll('#typeList button').forEach((b) => b.classList.toggle('active', b.dataset.type === t));
     $('editorTitle').textContent = 'Editar ' + typeName(t).toLowerCase();
@@ -342,7 +343,66 @@
     const titles = $('abilityList').querySelectorAll('.ab-title');
     if (titles.length) titles[titles.length - 1].focus();
   });
-  $('f_tier').addEventListener('change', (e) => { cur().tier = e.target.value; changed(); });
+  /* ---------- valores de referência por patamar ---------- */
+  const tierIndex = (s) => Math.min(3, Math.max(0, (parseInt(s.tier, 10) || 1) - 1));
+  function updateTierHint() {
+    const s = cur();
+    const tt = T.get(s.type).tierTable;
+    $('tierHint').parentElement.classList.toggle('hidden', !tt);
+    if (!tt) return;
+    const i = tierIndex(s);
+    const parts = [];
+    if (tt.atk) parts.push(`<b>ATQ</b> ${tt.atk[i]}`);
+    if (tt.damage) parts.push(`<b>Dano</b> ${tt.damage[i][0]} até ${tt.damage[i][1]}`);
+    if (tt.difficulty) parts.push(`<b>Dificuldade</b> ${tt.difficulty[i]}`);
+    if (tt.thresholds) parts.push(`<b>Limiares</b> ${tt.thresholds[i]}`);
+    $('tierHint').innerHTML = `Tabela do ${i + 1}º patamar: ` + parts.join(' · ');
+  }
+  // Troca os valores pelos da tabela do patamar. Sem `force`, só mexe em campos vazios ou
+  // que ainda estão com um valor de tabela — o que a pessoa personalizou fica como está.
+  function applyTierTable(s, force) {
+    const tt = T.get(s.type).tierTable;
+    if (!tt) return 0;
+    const i = tierIndex(s);
+    let n = 0;
+    const set = (key, value, defaults) => {
+      const curV = String(s[key] ?? '').trim();
+      if (force || !curV || defaults.includes(curV)) {
+        if (curV !== value) n++;
+        s[key] = value;
+      }
+    };
+    if (tt.atk) set('atk', tt.atk[i], tt.atk);
+    if (tt.difficulty) set('difficulty', tt.difficulty[i], tt.difficulty);
+    if (tt.thresholds) set('thresholds', tt.thresholds[i], tt.thresholds);
+    // dano: troca só os dados (ex.: 2d6+3) e mantém o tipo (fís/mág) que estiver escrito
+    if (tt.damage && 'atkDamage' in s && T.has(s.type, 'advstats')) {
+      const m = String(s.atkDamage || '').trim().match(/^(\S+)(.*)$/);
+      const dice = m ? m[1] : '';
+      const rest = m ? m[2] : ' fís';
+      const known = tt.damage.flat();
+      if (force || !dice || known.includes(dice)) {
+        const v = tt.damage[i][0] + (rest || ' fís');
+        if (v !== s.atkDamage) n++;
+        s.atkDamage = v;
+      }
+    }
+    return n;
+  }
+  $('f_tier').addEventListener('change', (e) => {
+    const s = cur();
+    s.tier = e.target.value;
+    applyTierTable(s, false);
+    fillForm();
+    changed();
+  });
+  $('tierApplyBtn').addEventListener('click', () => {
+    const s = cur();
+    const n = applyTierTable(s, true);
+    fillForm();
+    changed();
+    toast(n ? `Valores do ${tierIndex(s) + 1}º patamar aplicados` : 'Os valores já estão iguais aos da tabela');
+  });
 
   function changed() {
     scheduleRender();

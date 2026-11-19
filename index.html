@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&family=Overpass:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600;1,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=15">
+  <link rel="stylesheet" href="css/style.css?v=17">
 </head>
 <body>
   <div class="app">
@@ -154,14 +154,20 @@
             <input type="text" id="f_label" list="labelList">
             <datalist id="labelList"></datalist>
           </label>
-          <label class="field" data-feat="tier">Patamar
-            <select id="f_tier">
-              <option value="1">1º patamar</option>
-              <option value="2">2º patamar</option>
-              <option value="3">3º patamar</option>
-              <option value="4">4º patamar</option>
-            </select>
-          </label>
+          <div data-feat="tier">
+            <label class="field">Patamar
+              <select id="f_tier">
+                <option value="1">1º patamar</option>
+                <option value="2">2º patamar</option>
+                <option value="3">3º patamar</option>
+                <option value="4">4º patamar</option>
+              </select>
+            </label>
+            <div class="tier-table">
+              <div id="tierHint"></div>
+              <button type="button" class="btn btn-sm btn-ghost" id="tierApplyBtn" title="Substitui os valores pelos da tabela deste patamar">Usar valores da tabela</button>
+            </div>
+          </div>
           <label class="check-field" data-feat="multiclass"><input type="checkbox" id="f_multiclass"> Multiclasse</label>
           <label class="field hidden" id="label2Field">Segunda classe <small>(segunda faixa)</small>
             <input type="text" id="f_label2" list="labelList">
@@ -368,12 +374,12 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas2svg@1.0.16/canvas2svg.js"></script>
-  <script src="js/icons.js?v=15"></script>
-  <script src="js/types.js?v=15"></script>
-  <script src="js/render.js?v=15"></script>
-  <script src="js/cropper.js?v=15"></script>
-  <script src="js/sheet.js?v=15"></script>
-  <script src="js/vector.js?v=15"></script>
-  <script src="js/app.js?v=15"></script>
+  <script src="js/icons.js?v=17"></script>
+  <script src="js/types.js?v=17"></script>
+  <script src="js/render.js?v=17"></script>
+  <script src="js/cropper.js?v=17"></script>
+  <script src="js/sheet.js?v=17"></script>
+  <script src="js/vector.js?v=17"></script>
+  <script src="js/app.js?v=17"></script>
 </body>
 </html>
