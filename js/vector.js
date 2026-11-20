@@ -1,12 +1,18 @@
 /*
- * Saída vetorial das cartas (PDF e impressão).
+ * Saída para PDF e impressão — sem nenhuma transparência.
  *
- * O mesmo renderizador do canvas desenha num "canvas falso" (canvas2svg), que grava
- * tudo como SVG: texto, faixas, molduras e formas viram vetor e saem nítidos na
- * impressora em qualquer tamanho. Só as imagens (arte, fundo, ícones) continuam
- * como bitmap, em 600 dpi.
+ * Cada lado da carta vira um SVG com duas camadas:
+ *   1. fundo: tudo menos o texto (arte, faixas, molduras, ícones, efeitos), desenhado no
+ *      canvas e achatado numa imagem OPACA de 600 dpi;
+ *   2. texto: por cima, em vetor (canvas2svg), em preto puro.
  *
- * Para o PDF, o SVG é convertido com svg2pdf.js usando as fontes TTF embutidas
+ * Por quê: PDFs com elementos semitransparentes são "achatados" pelo driver da impressora
+ * (ou pelo Acrobat) na hora de imprimir, e esse achatamento costuma transformar em imagem
+ * de baixa resolução tudo o que está por perto — inclusive o texto —, que sai borrado.
+ * Achatando o fundo aqui, em alta resolução, o PDF fica sem transparência e o texto
+ * continua vetorial e nítido.
+ *
+ * No PDF, o SVG é convertido com svg2pdf.js usando as fontes TTF embutidas
  * (js/vendor/pdf-fonts.js), então o texto fica como texto de verdade no arquivo.
  */
 (function () {
@@ -36,100 +42,95 @@
     return d;
   }
 
-  function rasterize(img, sx, sy, sw, sh, dw, dh) {
-    const src = (img.getAttribute && img.getAttribute('src')) || '';
-    const isSvg = src.startsWith('data:image/svg');
-    const scale = Math.abs(dw) * RASTER;
-    let outW = isSvg ? scale : Math.min(sw, scale);
-    outW = Math.max(1, Math.round(outW));
-    const outH = Math.max(1, Math.round(outW * (Math.abs(dh) / Math.abs(dw))));
-    const c = document.createElement('canvas');
-    c.width = outW; c.height = outH;
-    const x = c.getContext('2d');
-    x.imageSmoothingEnabled = true;
-    x.imageSmoothingQuality = 'high';
-    x.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
-    const opaque = img.nodeName === 'IMG' && src.startsWith('data:image/jpeg');
-    const el = new Image();
-    el.src = opaque ? c.toDataURL('image/jpeg', 0.95) : c.toDataURL('image/png');
-    return el;
+  // Contexto do canvas que desenha tudo, menos o texto (camada de fundo)
+  function noTextContext(target) {
+    return new Proxy(target, {
+      get(t, prop) {
+        if (prop === 'fillText' || prop === 'strokeText') return () => {};
+        const v = t[prop];
+        return typeof v === 'function' ? v.bind(t) : v;
+      },
+      set(t, prop, v) { t[prop] = v; return true; },
+    });
   }
 
-  function vectorContext(target) {
+  // Contexto canvas2svg que só grava o texto (camada de texto)
+  const SHAPE_CALLS = ['fillRect', 'strokeRect', 'clearRect', 'beginPath', 'closePath', 'moveTo', 'lineTo',
+    'arc', 'arcTo', 'bezierCurveTo', 'quadraticCurveTo', 'rect', 'ellipse', 'fill', 'stroke', 'clip',
+    'drawImage', 'strokeText', 'putImageData'];
+  function textOnlyContext(target) {
+    const noop = () => {};
     const fillText = (text, x, y) => {
+      const alpha = target.globalAlpha;
+      target.globalAlpha = 1; // texto sempre opaco
       if (target.textBaseline === 'middle') {
+        // o svg2pdf não entende dominant-baseline: converte para a linha de base alfabética
         const d = middleToAlphabetic(target.font);
         target.textBaseline = 'alphabetic';
         target.fillText(text, x, y + d);
         target.textBaseline = 'middle';
       } else target.fillText(text, x, y);
+      target.globalAlpha = alpha;
     };
-    const drawImage = (img, ...a) => {
-      const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-      let sx = 0, sy = 0, sw = iw, sh = ih, dx, dy, dw, dh;
-      if (a.length === 2) { [dx, dy] = a; dw = iw; dh = ih; }
-      else if (a.length === 4) { [dx, dy, dw, dh] = a; }
-      else { [sx, sy, sw, sh, dx, dy, dw, dh] = a; }
-      if (!sw || !sh || !dw || !dh) return;
-      // O drawImage do canvas2svg perde a posição da imagem; então o <image> é criado aqui,
-      // dentro do grupo atual (que já carrega recortes e transformações do save/clip).
-      const href = rasterize(img, sx, sy, sw, sh, dw, dh).getAttribute('src');
-      const el = document.createElementNS(NS, 'image');
-      el.setAttribute('x', dx);
-      el.setAttribute('y', dy);
-      el.setAttribute('width', dw);
-      el.setAttribute('height', dh);
-      el.setAttribute('preserveAspectRatio', 'none');
-      el.setAttribute('href', href);
-      el.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', href);
-      if (target.globalAlpha < 1) el.setAttribute('opacity', target.globalAlpha);
-      target.__closestGroupOrSvg().appendChild(el);
-    };
-    // canvas2svg 1.0.16: o clip() não grava o caminho no <clipPath> (ficaria vazio)
-    const clip = () => {
-      target.__applyCurrentDefaultPath();
-      target.clip();
-    };
-    // canvas2svg 1.0.16: um contorno feito com preenchimento em gradiente herdaria esse
-    // gradiente como preenchimento; troca o preenchimento por uma cor só durante o traço
-    const withPlainFill = (fn) => (...a) => {
-      const f = target.fillStyle;
-      if (typeof f !== 'string') target.fillStyle = '#000000';
-      try { return target[fn](...a); } finally { target.fillStyle = f; }
-    };
-    const stroke = withPlainFill('stroke');
-    const strokeRect = withPlainFill('strokeRect');
     return new Proxy(target, {
       get(t, prop) {
         if (prop === 'fillText') return fillText;
-        if (prop === 'drawImage') return drawImage;
-        if (prop === 'clip') return clip;
-        if (prop === 'stroke') return stroke;
-        if (prop === 'strokeRect') return strokeRect;
+        if (SHAPE_CALLS.includes(prop)) return noop;
         const v = t[prop];
         return typeof v === 'function' ? v.bind(t) : v;
       },
       set(t, prop, v) {
-        // canvas2svg só aceita gradiente no preenchimento; no contorno usa a cor do meio
-        if (prop === 'strokeStyle' && typeof v !== 'string') {
-          const stops = v && v.__root ? v.__root.querySelectorAll('stop') : [];
-          v = stops.length ? stops[Math.floor(stops.length / 2)].getAttribute('stop-color') : '#e7b93c';
-        }
+        // gradientes não importam para o texto; evita estilos que o canvas2svg não suporta
+        if ((prop === 'strokeStyle' || prop === 'fillStyle') && typeof v !== 'string') v = '#000000';
         t[prop] = v;
         return true;
       },
     });
   }
 
+  function draw(canvasLike, state, back, side) {
+    if (side === 'back') DH_RENDER.renderBack(canvasLike, state, back);
+    else DH_RENDER.renderFront(canvasLike, state);
+  }
+
   // Desenha a frente ou o verso como <svg> (as imagens precisam estar carregadas: DH_RENDER.whenReady)
   function cardSvg(state, back, side) {
     const h = DH_RENDER.cardHeight(state);
+
+    // 1) fundo achatado e opaco, em 600 dpi
+    const bg = document.createElement('canvas');
+    bg.width = Math.round(W * RASTER);
+    bg.height = Math.round(h * RASTER);
+    const real = bg.getContext('2d');
+    draw({ width: bg.width, height: bg.height, getContext: () => noTextContext(real) }, state, back, side);
+    real.setTransform(1, 0, 0, 1, 0, 0);
+    real.globalAlpha = 1;
+    real.globalCompositeOperation = 'destination-over'; // o que ficou transparente vira branco
+    real.fillStyle = '#ffffff';
+    real.fillRect(0, 0, bg.width, bg.height);
+    const bgHref = bg.toDataURL('image/jpeg', 0.95);
+
+    // 2) texto em vetor
     const c2s = new C2S(W, h);
-    const ctx = vectorContext(c2s);
-    const fakeCanvas = { width: W, height: h, getContext: () => ctx };
-    if (side === 'back') DH_RENDER.renderBack(fakeCanvas, state, back);
-    else DH_RENDER.renderFront(fakeCanvas, state);
+    draw({ width: W, height: h, getContext: () => textOnlyContext(c2s) }, state, back, side);
     const svg = c2s.getSvg();
+    svg.querySelectorAll('text').forEach((t) => {
+      t.removeAttribute('opacity');
+      t.removeAttribute('fill-opacity');
+      t.removeAttribute('stroke');
+    });
+
+    const img = document.createElementNS(NS, 'image');
+    img.setAttribute('x', 0);
+    img.setAttribute('y', 0);
+    img.setAttribute('width', W);
+    img.setAttribute('height', h);
+    img.setAttribute('preserveAspectRatio', 'none');
+    img.setAttribute('href', bgHref);
+    img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', bgHref);
+    const defs = svg.querySelector('defs');
+    svg.insertBefore(img, defs ? defs.nextSibling : svg.firstChild);
+
     svg.setAttribute('viewBox', `0 0 ${W} ${h}`);
     svg.setAttribute('preserveAspectRatio', 'none');
     svg.removeAttribute('width');

@@ -7,7 +7,9 @@
   const MAX_H = 3150; // 266,7 mm: o máximo que cabe na folha A4 sem espaço entre cartas
   const FONT_HEAD = '"Montserrat", "Arial Black", Arial, sans-serif';
   const FONT_BODY = '"Overpass", "Segoe UI", Arial, sans-serif';
-  const INK = '#1f1d22';
+  // Texto em preto puro e cinzas neutros: no PDF viram tinta só preta (DeviceGray).
+  // Um quase-preto colorido seria impresso misturando as 4 tintas e borraria as letras.
+  const INK = '#000000';
 
   // Área da arte de cada tipo: vem do registro (js/types.js)
   const artOf = (type) => DH_TYPES.artRect(type);
@@ -448,7 +450,7 @@
 
   function drawFooter(ctx, s, color) {
     ctx.save();
-    ctx.fillStyle = color || '#5a5660';
+    ctx.fillStyle = color || '#555555';
     ctx.font = bodyFont(17, false, true);
     ctx.textBaseline = 'alphabetic';
     const y = H - 30;
@@ -580,7 +582,7 @@
     if (s.subtitle && s.subtitle.trim() && def.features.includes('subtitle')) {
       y += 38;
       ctx.font = bodyFont(28, false, true);
-      ctx.fillStyle = '#4a4650';
+      ctx.fillStyle = '#444444';
       ctx.fillText(s.subtitle, W / 2, y);
     }
 
@@ -614,7 +616,7 @@
         ctx.lineWidth = 2.5;
         ctx.stroke();
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#56515c';
+        ctx.fillStyle = '#555555';
         ctx.font = headFont(19 * k, 700);
         const lw = drawSpaced(ctx, l, x + 22 * k, cy + 1, 1.5 * k, 'left');
         ctx.fillStyle = s.color && luminance(s.color) < 0.6 ? s.color : INK;
@@ -690,7 +692,7 @@
 
     // título
     const title = (s.title || '').toUpperCase();
-    ctx.fillStyle = '#0d0c0f';
+    ctx.fillStyle = INK;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     fitHead(ctx, title, pillL - 24 - 44, 68, 900, 26);
@@ -699,7 +701,7 @@
     const top = P + 106;
     const box = { x: 44, y: top, w: W - 88, h: H - 72 - top };
     const lay = fitRich(ctx, bodyParas(s, true), box, 28 * (s.textScale || 1));
-    drawRich(ctx, lay, box.x, box.y, '#141316');
+    drawRich(ctx, lay, box.x, box.y, INK);
     drawFooter(ctx, s);
 
     // moldura dourada
@@ -766,7 +768,7 @@
     }
 
     const title = (s.title || '').toUpperCase();
-    ctx.fillStyle = '#0d0c0f';
+    ctx.fillStyle = INK;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     fitHead(ctx, title, W - 88, 84, 900, 28);
@@ -775,14 +777,14 @@
     const top = A + 132;
     const box = { x: 44, y: top, w: W - 88, h: H - 72 - top };
     const lay = fitRich(ctx, bodyParas(s, true), box, 29 * (s.textScale || 1));
-    drawRich(ctx, lay, box.x, box.y, '#141316');
+    drawRich(ctx, lay, box.x, box.y, INK);
     drawFooter(ctx, s);
   }
 
   /* ------------------------------------------------------------------ */
   /* Bloco de estatísticas (Adversário, Ambiente) — altura variável      */
   /* ------------------------------------------------------------------ */
-  const STAT_BG = '#f4f0e6', STAT_BOX = '#fbf9f3', STAT_BORDER = '#b7ab94', STAT_RULE = '#2a2730';
+  const STAT_BG = '#f4f0e6', STAT_BOX = '#fbf9f3', STAT_BORDER = '#b7ab94', STAT_RULE = '#222222';
   const STAT_X = 46, STAT_W = W - 92;
 
   function statBlocks(s) {
@@ -920,7 +922,7 @@
     ctx.textBaseline = 'alphabetic';
     for (const it of L.items) {
       if (it.kind === 'title') {
-        ctx.fillStyle = '#121014';
+        ctx.fillStyle = INK;
         ctx.font = headFont(it.size, 900);
         it.lines.forEach((ln, i) => ctx.fillText(ln, STAT_X, it.y + it.size * 0.8 + i * it.size * 0.98));
       } else if (it.kind === 'rich') {
@@ -933,7 +935,7 @@
         ctx.fillRect(STAT_X - 10, it.y + it.h - 2.5, STAT_W + 20, 2.5);
         drawRich(ctx, it.lay, STAT_X + 12, it.y + it.pad, INK);
       } else if (it.kind === 'heading') {
-        ctx.fillStyle = '#121014';
+        ctx.fillStyle = INK;
         ctx.font = headFont(it.size, 800);
         ctx.fillText(it.text, STAT_X, it.y + it.size * 0.85);
       }
