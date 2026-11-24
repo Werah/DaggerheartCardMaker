@@ -30,7 +30,7 @@
     evasion: '', hp: '', itemKind: 'weapon',
     tier: '1', motives: '', impulses: '', difficulty: '', thresholds: '', advHp: '', advStress: '',
     atk: '', atkName: '', atkRange: '', atkDamage: '', adversaries: '', abilities: [], trait: '', damage: '', armor: '', threshold: '',
-    color: '#4e345b', gold: '#e7b93c',
+    color: '#4e345b', gold: '#e7b93c', artH: null,
     dom1: { preset: 'arcana', icon: null }, dom2: { preset: 'blade', icon: null },
     iconKeepColors: false, textScale: 1, artist: '', footer: 'Homebrew', art: null,
     bg: null, bgFade: 0,
@@ -242,7 +242,14 @@
     const d = get(type);
     return { ...JSON.parse(JSON.stringify(BASE_STATE)), label: d.name, ...JSON.parse(JSON.stringify(d.example)), type };
   }
-  function artRect(type) { return { x: 0, y: 0, w: 750, h: get(type).art }; }
+  // Limites da altura da arte quando a pessoa arrasta a faixa do meio (px de 1050)
+  const ART_MIN = 180, ART_MAX = 760;
+  function clampArt(h) { return Math.round(Math.min(ART_MAX, Math.max(ART_MIN, h))); }
+  // Área da arte: usa a altura escolhida na carta (s.artH) ou a padrão do tipo
+  function artRect(type, s) {
+    const h = s && Number(s.artH) ? clampArt(Number(s.artH)) : get(type).art;
+    return { x: 0, y: 0, w: 750, h };
+  }
 
-  window.DH_TYPES = { ORDER, ITEM_KINDS, get, has, defaults, artRect };
+  window.DH_TYPES = { ORDER, ITEM_KINDS, get, has, defaults, artRect, clampArt, ART_MIN, ART_MAX };
 })();

@@ -12,7 +12,7 @@
   const INK = '#000000';
 
   // Área da arte de cada tipo: vem do registro (js/types.js)
-  const artOf = (type) => DH_TYPES.artRect(type);
+  const artOf = (s) => DH_TYPES.artRect(s.type, s);
 
   /* ------------------------------------------------------------------ */
   /* Imagens                                                             */
@@ -473,11 +473,26 @@
   /* ------------------------------------------------------------------ */
   /* Arte                                                                */
   /* ------------------------------------------------------------------ */
+  // Ajusta um recorte salvo para outra proporção (quando a faixa do meio é arrastada):
+  // mantém o centro e a largura e só muda a altura, sem distorcer a imagem.
+  function fitCrop(crop, iw, ih, aspect) {
+    if (!crop) return coverCrop(iw, ih, aspect);
+    if (Math.abs(crop.w / crop.h - aspect) < 0.002) return crop;
+    const cx = crop.x + crop.w / 2, cy = crop.y + crop.h / 2;
+    let w = crop.w, h = w / aspect;
+    if (h > ih) { h = ih; w = h * aspect; }
+    let x = cx - w / 2, y = cy - h / 2;
+    if (w <= iw) x = Math.min(iw - w, Math.max(0, x));
+    if (h <= ih) y = Math.min(ih - h, Math.max(0, y));
+    return { x, y, w, h };
+  }
+
   function drawArt(ctx, s, rect, placeholder) {
     const img = s.art && s.art.src ? getImg(s.art.src) : null;
     ctx.save();
     if (img) {
-      drawCropped(ctx, img, s.art.crop, rect.x, rect.y, rect.w, rect.h);
+      const crop = fitCrop(s.art.crop, img.naturalWidth, img.naturalHeight, rect.w / rect.h);
+      drawCropped(ctx, img, crop, rect.x, rect.y, rect.w, rect.h);
     } else placeholder();
     ctx.restore();
   }
@@ -536,7 +551,7 @@
   function drawStandard(ctx, s) {
     const type = s.type;
     const def = DH_TYPES.get(type);
-    const art = artOf(type);
+    const art = artOf(s);
     const bannerFg = luminance(s.color) > 0.72 ? INK : '#ffffff';
     const icons = [domainIcon(s.dom1, bannerFg, s.iconKeepColors)];
     if (def.banner === 2) icons.push(domainIcon(s.dom2, bannerFg, s.iconKeepColors));
@@ -637,12 +652,12 @@
   }
 
   function drawAncestry(ctx, s) {
-    const art = artOf(s.type);
+    const art = artOf(s);
     const gold = s.gold;
     drawBase(ctx, s);
     drawArt(ctx, s, art, () => placeholderScene(ctx, art, '#5b6fa8'));
 
-    const P = 585, tabX = W * 0.56, rise = 42;
+    const P = art.h - 55, tabX = W * 0.56, rise = 42;
     const panel = (dy) => {
       ctx.beginPath();
       ctx.moveTo(0, P + dy); ctx.lineTo(tabX, P + dy); ctx.lineTo(tabX + rise, P - rise + dy);
@@ -714,7 +729,7 @@
   }
 
   function drawCommunity(ctx, s) {
-    const art = artOf(s.type);
+    const art = artOf(s);
     const gold = s.gold;
     const A = art.h, ch = 70;
     drawBase(ctx, s);
@@ -943,6 +958,15 @@
     drawFooter(ctx, s);
   }
 
+  // Posição (px lógicos) da faixa que divide arte e texto — usada para arrastar na prévia.
+  // null = esta carta não tem faixa ajustável (cartas de bloco).
+  function splitY(s) {
+    const layout = DH_TYPES.get(s.type).layout;
+    if (layout === 'statblock') return null;
+    const a = artOf(s).h;
+    return layout === 'ancestry' ? a - 55 : a;
+  }
+
   const heightCtx = document.createElement('canvas').getContext('2d');
   // Altura lógica (px de 750 de largura) que a carta precisa
   function cardHeight(s) {
@@ -1131,7 +1155,7 @@
   }
 
   window.DH_RENDER = {
-    W, H: BASE_H, MAX_H, cardHeight,
+    W, H: BASE_H, MAX_H, cardHeight, splitY, fitCrop,
     renderFront, renderBack, whenReady, ensureFonts, loadImg, coverCrop,
     setOnImageLoad(fn) { onImageLoad = fn; },
   };

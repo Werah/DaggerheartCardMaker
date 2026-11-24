@@ -527,7 +527,7 @@
   /* Imagem da carta                                                     */
   /* ------------------------------------------------------------------ */
   function artAspect() {
-    const a = T.artRect(app.current);
+    const a = T.artRect(app.current, cur());
     return a.w / a.h;
   }
 
@@ -551,7 +551,10 @@
   $('artCropBtn').addEventListener('click', async () => {
     const s = cur();
     if (!s.art) return;
-    const crop = await DH_CROP.open(s.art.src, artAspect(), s.art.crop);
+    // o recorte salvo pode ter outra proporção se a faixa foi arrastada depois
+    const img = await R.loadImg(s.art.src);
+    const start = img ? R.fitCrop(s.art.crop, img.naturalWidth, img.naturalHeight, artAspect()) : s.art.crop;
+    const crop = await DH_CROP.open(s.art.src, artAspect(), start);
     if (crop) { s.art.crop = crop; changed(); }
   });
   $('artRemoveBtn').addEventListener('click', () => {
@@ -621,7 +624,53 @@
     if (e.target && e.target.id === 'backCanvas' && app.back.enabled) setBackFromFile(f);
     else setArtFromFile(f);
   });
-  $('frontCanvas').addEventListener('dblclick', () => {
+  /* ---------- faixa do meio arrastável (divide arte e texto) ---------- */
+  const fc = $('frontCanvas');
+  const GRAB = 28; // distância (px lógicos) da faixa em que dá para pegá-la
+  const logicalY = (e) => {
+    const r = fc.getBoundingClientRect();
+    return (e.clientY - r.top) * (fc.height / r.height);
+  };
+  const nearSplit = (e) => {
+    const y0 = R.splitY(cur());
+    return y0 != null && Math.abs(logicalY(e) - y0) <= GRAB;
+  };
+  let drag = null;
+  fc.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !nearSplit(e)) return;
+    e.preventDefault();
+    const s = cur();
+    const art = T.artRect(s.type, s).h;
+    drag = { id: e.pointerId, offset: logicalY(e) - art };
+    fc.setPointerCapture(e.pointerId);
+    fc.classList.add('dragging-split');
+  });
+  fc.addEventListener('pointermove', (e) => {
+    if (drag && e.pointerId === drag.id) {
+      cur().artH = T.clampArt(logicalY(e) - drag.offset);
+      scheduleRender();
+      return;
+    }
+    fc.style.cursor = nearSplit(e) ? 'ns-resize' : '';
+  });
+  const endDrag = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = null;
+    fc.classList.remove('dragging-split');
+    scheduleSave();
+  };
+  fc.addEventListener('pointerup', endDrag);
+  fc.addEventListener('pointercancel', endDrag);
+  fc.addEventListener('pointerleave', () => { if (!drag) fc.style.cursor = ''; });
+
+  fc.addEventListener('dblclick', (e) => {
+    // duplo clique na faixa: volta à altura padrão do tipo
+    if (nearSplit(e)) {
+      cur().artH = null;
+      changed();
+      toast('Divisão entre imagem e texto voltou ao padrão');
+      return;
+    }
     if (cur().art) $('artCropBtn').click();
     else $('artFile').click();
   });
